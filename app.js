@@ -380,41 +380,29 @@ function nextClass() {
   return candidates.sort((a, b) => a.starts - b.starts)[0];
 }
 
-function weekData() {
-  const now = new Date();
-  const mondayOffset = (now.getDay() + 6) % 7;
-  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - mondayOffset, 12);
-  return Array.from({ length: 7 }, (_, index) => {
-    const date = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + index, 12);
-    const key = dateKey(date);
-    return { key, label: date.toLocaleDateString(undefined, { weekday: "narrow" }), minutes: state.sessions.filter(s => s.date === key).reduce((sum, s) => sum + s.minutes, 0), today: key === dateKey() };
-  });
-}
-
 function renderDashboard() {
-  const todayTasks = sortTasks(state.tasks.filter(task => task.due && task.due <= dateKey())).slice(0, 6);
-  const dueToday = state.tasks.filter(task => task.due === dateKey());
-  const completed = dueToday.filter(task => task.completed).length;
-  const percent = dueToday.length ? Math.round(completed / dueToday.length * 100) : 0;
-  const openTasks = state.tasks.filter(task => !task.completed).length;
+  const today = dateKey();
+  const openTasks = sortTasks(state.tasks.filter(task => !task.completed));
+  const overdue = openTasks.filter(task => task.due && task.due < today).length;
+  const dueToday = openTasks.filter(task => task.due === today).length;
+  const dueSoon = openTasks.filter(task => task.due > today && task.due <= addDays(7)).length;
   const next = nextClass();
-  const week = weekData();
-  const maxMinutes = Math.max(...week.map(day => day.minutes), 50);
-  const focusTask = sortTasks(state.tasks.filter(task => !task.completed))[0];
+  const focusTask = openTasks[0];
   const firstName = state.profile.name ? `, ${e(state.profile.name)}` : "";
 
-  app.innerHTML = `<section class="page">
-    <div class="page-heading"><div><span class="eyebrow">${new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}</span><h1>${greeting()}${firstName}.</h1><p>${openTasks ? `You have ${openTasks} open ${openTasks === 1 ? "task" : "tasks"}. Let’s make the next one count.` : "Everything is handled. Enjoy the clear desk."}</p></div></div>
-    <div class="hero-strip">
-      <article class="card hero-focus"><span class="eyebrow">Suggested focus</span><h2>${focusTask ? e(focusTask.title) : "A clear desk is a good feeling."}</h2><p>${focusTask ? `${e(courseFor(focusTask.courseId).name)} · ${focusTask.estimate || 25} minute estimate · ${focusTask.due ? `due ${relativeDate(focusTask.due).toLowerCase()}` : "no due date"}` : "You have no open assignments right now."}</p>${focusTask ? `<button class="button" data-focus-task="${focusTask.id}">Start a focus session ${icons.arrow}</button>` : ""}</article>
-      <article class="card progress-card"><div><span class="eyebrow">Today’s progress</span><h3>${dueToday.length ? `${completed} of ${dueToday.length} complete` : "No work due"}</h3><p>${!dueToday.length ? "Your day is open." : percent === 100 ? "Nicely done." : "One task at a time."}</p></div><div class="progress-ring" style="--value:${percent * 3.6}deg"><strong>${percent}%</strong></div></article>
+  app.innerHTML = `<section class="page home-page">
+    <div class="page-heading"><div><h1>${greeting()}${firstName}.</h1><p>${openTasks.length ? `Here’s what needs your attention. You have ${openTasks.length} open ${openTasks.length === 1 ? "assignment" : "assignments"}.` : "Everything is handled. Enjoy the clear desk."}</p></div></div>
+    <div class="card home-summary" aria-label="Assignment summary">
+      <div class="home-summary-item ${overdue ? "urgent" : ""}"><strong>${overdue}</strong><span>Overdue</span></div>
+      <div class="home-summary-item"><strong>${dueToday}</strong><span>Due today</span></div>
+      <div class="home-summary-item"><strong>${dueSoon}</strong><span>Next 7 days</span></div>
     </div>
-    <div class="dashboard-grid">
-      <article class="card"><div class="card-header"><div><h2>Today’s plan</h2><p>Due and overdue work, ordered by urgency</p></div><button class="text-link" data-go="planner">Open planner →</button></div>${taskRows(todayTasks)}</article>
-      <div class="dashboard-stack">
-        ${next ? `<article class="card next-card"><div class="next-card-top" style="--class-bg:${next.course.color}"><span class="eyebrow">Next class${next.slot.rotation ? ` · ${e(next.slot.rotation)}` : ""}</span><h3>${e(next.course.name)}</h3><p>${e([next.slot.period, next.course.teacher, next.course.room].filter(Boolean).join(" · ") || "Schedule details")}</p></div><div class="next-card-bottom"><div class="next-time"><strong>${next.offset === 0 ? "Today" : next.offset === 1 ? "Tomorrow" : next.starts.toLocaleDateString(undefined, { weekday: "long" })}, ${formatTime(next.slot.start)}</strong><span>Ends ${formatTime(next.slot.end)}</span></div>${icons.arrow}</div></article>` : ""}
-        <article class="card week-stats"><h3>Focus this week</h3><div class="week-bars">${week.map(day => `<div class="day-bar ${day.today ? "today" : ""}"><div class="bar-track" title="${day.minutes} minutes"><span class="bar-fill" style="height:${Math.max(6, day.minutes / maxMinutes * 100)}%"></span></div><span>${day.label}</span></div>`).join("")}</div></article>
-      </div>
+    <div class="home-layout">
+      <article class="card home-work-card"><div class="card-header"><div><h2>What you need to do</h2><p>All open work, earliest due first</p></div><span class="home-open-count">${openTasks.length} open</span></div>${taskRows(openTasks.slice(0, 8))}<div class="home-card-footer">${openTasks.length > 8 ? `<span>${openTasks.length - 8} more in your planner</span>` : "<span>Keep the list short and finishable.</span>"}<button class="text-link" data-go="planner">Open planner →</button></div></article>
+      <aside class="home-sidebar">
+        <article class="card home-focus-card"><span class="home-card-label">Start here</span><h2>${focusTask ? e(focusTask.title) : "You’re caught up"}</h2><p>${focusTask ? `${e(courseFor(focusTask.courseId).name)} · ${focusTask.estimate || 25} min · ${relativeDate(focusTask.due)}` : "There are no open assignments waiting for you."}</p>${focusTask ? `<button class="button button-dark" data-focus-task="${focusTask.id}">Start focus session ${icons.arrow}</button>` : ""}</article>
+        ${next ? `<article class="card home-next-card" style="--next-color:${next.course.color}"><div><span class="home-card-label">Next class${next.slot.rotation ? ` · ${e(next.slot.rotation)}` : ""}</span><h3>${e(next.course.name)}</h3><p>${e([next.slot.period, next.course.teacher, next.course.room].filter(Boolean).join(" · ") || "Schedule details")}</p></div><div class="home-next-time"><strong>${next.offset === 0 ? "Today" : next.offset === 1 ? "Tomorrow" : next.starts.toLocaleDateString(undefined, { weekday: "long" })}, ${formatTime(next.slot.start)}</strong><span>Ends ${formatTime(next.slot.end)}</span></div></article>` : `<article class="card home-next-card empty"><div><span class="home-card-label">Next class</span><h3>Add your schedule</h3><p>See the next period, room, and start time here.</p></div><button class="text-link" data-go="classes">Set up classes →</button></article>`}
+      </aside>
     </div>
   </section>`;
 }
