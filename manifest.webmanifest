@@ -1,6 +1,6 @@
 {
-  "name": "Daymark School Planner",
-  "short_name": "Daymark",
+  "name": "OG Sync School Planner",
+  "short_name": "OG Sync",
   "description": "A calm, local-first school planner.",
   "start_url": "./#dashboard",
   "display": "standalone",

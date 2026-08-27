@@ -271,7 +271,7 @@ async function pullCloud({ quiet = false } = {}) {
     if (response.status === 401) {
       cloud.ready = false;
       showCloudSignIn("That sync key was not accepted.");
-      throw new Error("Invalid Daymark sync key");
+      throw new Error("Invalid OG Sync key");
     }
     if (!response.ok || !validState(result.state)) throw new Error(result.error || "Cloud sync failed");
     state = ensureTombstones(result.state);
@@ -283,7 +283,7 @@ async function pullCloud({ quiet = false } = {}) {
     return true;
   } catch (error) {
     setCloudLabel("Cloud offline · saved here");
-    if (!quiet && error.message !== "Invalid Daymark sync key") showToast(error.message);
+    if (!quiet && error.message !== "Invalid OG Sync key") showToast(error.message);
     return false;
   }
 }
@@ -313,7 +313,7 @@ async function pushCloudState() {
       if (response.status === 401) {
         cloud.ready = false;
         showCloudSignIn("That sync key was not accepted.");
-        throw new Error("Invalid Daymark sync key");
+        throw new Error("Invalid OG Sync key");
       }
       if (!response.ok) throw new Error(result.error || "Could not save to cloud");
       cloud.revision = result.revision || null;
@@ -322,7 +322,7 @@ async function pushCloudState() {
   } catch (error) {
     cloud.dirty = true;
     setCloudLabel("Cloud offline · saved here");
-    if (error.message !== "Invalid Daymark sync key") showToast(`${error.message}. Your changes are saved on this device.`);
+    if (error.message !== "Invalid OG Sync key") showToast(`${error.message}. Your changes are saved on this device.`);
     cloud.retryTimer = setTimeout(pushCloudState, 30_000);
   } finally {
     cloud.saving = false;
@@ -549,7 +549,7 @@ function formatPoints(value) {
 function renderGrades() {
   app.innerHTML = `<section class="page">
     <div class="page-heading"><div><span class="eyebrow">Know where you stand</span><h1>Grade tracker</h1><p>Track earned points and calculate what you need on the next assignment or test.</p></div><button class="button button-dark" data-add-grade>+ Add graded item</button></div>
-    <aside class="card grade-note"><span class="integration-logo">%</span><div><h3>Points-based calculation</h3><p>Daymark uses total points earned ÷ total points possible. If a teacher weights categories, use the official gradebook as the final source.</p></div></aside>
+    <aside class="card grade-note"><span class="integration-logo">%</span><div><h3>Points-based calculation</h3><p>OG Sync uses total points earned ÷ total points possible. If a teacher weights categories, use the official gradebook as the final source.</p></div></aside>
     <div class="grades-grid">${state.courses.map(course => {
       const items = state.gradeItems.filter(item => item.courseId === course.id).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
       const summary = window.DaymarkSchool.gradeSummary(items);
@@ -569,26 +569,26 @@ function renderGrades() {
 function renderSync() {
   if (HOSTED) {
     app.innerHTML = `<section class="page">
-      <div class="page-heading"><div class="sync-intro"><span class="eyebrow">Available anywhere</span><h1>Cloud sync</h1><p>Your planner is protected by your private Daymark sync key. The trusted Mac imports school data; this browser receives the normalized assignments.</p></div><button class="button button-quiet" data-cloud-refresh>Refresh now</button></div>
+      <div class="page-heading"><div class="sync-intro"><span class="eyebrow">Available anywhere</span><h1>Cloud sync</h1><p>Your planner is protected by your private OG Sync key. The trusted Mac imports school data; this browser receives the normalized assignments.</p></div><button class="button button-quiet" data-cloud-refresh>Refresh now</button></div>
       <div class="sync-grid">
         ${cloudProviderCard("google", "G", "Google Classroom")}
         ${cloudProviderCard("blackbaud", "B", "My Oak Grove · Blackbaud")}
-        <article class="card integration-card"><div class="integration-top"><span class="integration-logo">☁</span><span class="status-pill connected">Connected</span></div><h2>Daymark cloud</h2><p>This device saves planner changes to your private Vercel storage. School passwords and provider cookies never leave your Mac.</p><button class="button button-quiet" data-cloud-disconnect>Change sync key</button></article>
+        <article class="card integration-card"><div class="integration-top"><span class="integration-logo">☁</span><span class="status-pill connected">Connected</span></div><h2>OG Sync cloud</h2><p>This device saves planner changes to your private Vercel storage. School passwords and provider cookies never leave your Mac.</p><button class="button button-quiet" data-cloud-disconnect>Change sync key</button></article>
         <article class="card integration-card"><div class="integration-top"><span class="integration-logo">↕</span><span class="status-pill">Backup</span></div><h2>Export or restore</h2><p>Keep a portable JSON backup, or restore one and send it to your cloud workspace.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="button button-dark" data-export>Export data</button><button class="button button-quiet" data-import>Import backup</button></div></article>
-        <article class="card integration-card"><div class="integration-top"><span class="integration-logo">⌫</span><span class="status-pill">All devices</span></div><h2>Clear assignments & history</h2><p>Remove every task and focus session from Daymark while keeping your class setup and profile.</p><button class="button button-quiet danger-link" data-clear-work>Clear work data</button></article>
+        <article class="card integration-card"><div class="integration-top"><span class="integration-logo">⌫</span><span class="status-pill">All devices</span></div><h2>Clear assignments & history</h2><p>Remove every task and focus session from OG Sync while keeping your class setup and profile.</p><button class="button button-quiet danger-link" data-clear-work>Clear work data</button></article>
         <aside class="card privacy-card"><span class="integration-logo">${icons.shield}</span><div><h3>Your school credentials are not in Vercel.</h3><p>The Mac helper keeps Google and Blackbaud sessions in .data/scraper-profile and uploads only classes, assignment details, and sync timestamps.</p></div></aside>
       </div>
     </section>`;
     return;
   }
   app.innerHTML = `<section class="page">
-    <div class="page-heading"><div class="sync-intro"><span class="eyebrow">Bring school into focus</span><h1>Browser import</h1><p>Sign in through a dedicated browser window, then Daymark reads the assignments shown to your student account. Repeated imports update existing work instead of duplicating it.</p></div></div>
+    <div class="page-heading"><div class="sync-intro"><span class="eyebrow">Bring school into focus</span><h1>Browser import</h1><p>Sign in through a dedicated browser window, then OG Sync reads the assignments shown to your student account. Repeated imports update existing work instead of duplicating it.</p></div></div>
     <div class="sync-grid">
       ${integrationCard("google", "G", "Google Classroom", "Read assignments from Classroom’s To-do views using a separate browser profile where you sign in normally.")}
       ${integrationCard("blackbaud", "B", "My Oak Grove · Blackbaud", "Read assignments currently shown in My Day → Assignment Center using your signed-in browser session.")}
-      <article class="card integration-card"><div class="integration-top"><span class="integration-logo">↕</span><span class="status-pill">Works now</span></div><h2>Backup & transfer</h2><p>Export your local workspace as JSON or restore a previous Daymark backup on this device.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="button button-dark" data-export>Export data</button><button class="button button-quiet" data-import>Import backup</button></div></article>
+      <article class="card integration-card"><div class="integration-top"><span class="integration-logo">↕</span><span class="status-pill">Works now</span></div><h2>Backup & transfer</h2><p>Export your local workspace as JSON or restore a previous OG Sync backup on this device.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="button button-dark" data-export>Export data</button><button class="button button-quiet" data-import>Import backup</button></div></article>
       <article class="card integration-card"><div class="integration-top"><span class="integration-logo">⌫</span><span class="status-pill">Local data</span></div><h2>Clear assignments & history</h2><p>Remove every task and focus session while keeping your class setup and profile.</p><button class="button button-quiet danger-link" data-clear-work>Clear work data</button></article>
-      <aside class="card privacy-card"><span class="integration-logo">${icons.shield}</span><div><h3>Passwords stay on the official sign-in pages.</h3><p>Daymark stores the dedicated browser session locally in .data/scraper-profile. It never asks for, receives, logs, or saves your Google or Blackbaud password.</p></div></aside>
+      <aside class="card privacy-card"><span class="integration-logo">${icons.shield}</span><div><h3>Passwords stay on the official sign-in pages.</h3><p>OG Sync stores the dedicated browser session locally in .data/scraper-profile. It never asks for, receives, logs, or saves your Google or Blackbaud password.</p></div></aside>
     </div>
   </section>`;
   refreshSyncStatus();
@@ -597,7 +597,7 @@ function renderSync() {
 function cloudProviderCard(provider, mark, title) {
   const result = state.sync?.[syncStateKeys[provider]];
   const connected = Number.isFinite(Date.parse(result?.lastSyncedAt || ""));
-  return `<article class="card integration-card"><div class="integration-top"><span class="integration-logo ${provider}">${mark}</span><span class="status-pill ${connected ? "connected" : ""}">${connected ? "Synced by Mac" : "Waiting for Mac"}</span></div><h2>${title}</h2><p>${connected ? lastSyncText(provider) : "Run the Daymark helper on your trusted Mac once to send this service’s assignments to the cloud."}</p></article>`;
+  return `<article class="card integration-card"><div class="integration-top"><span class="integration-logo ${provider}">${mark}</span><span class="status-pill ${connected ? "connected" : ""}">${connected ? "Synced by Mac" : "Waiting for Mac"}</span></div><h2>${title}</h2><p>${connected ? lastSyncText(provider) : "Run the OG Sync helper on your trusted Mac once to send this service’s assignments to the cloud."}</p></article>`;
 }
 
 function integrationCard(provider, mark, title, description) {
@@ -660,13 +660,13 @@ function paintSyncProvider(provider, status = syncServerStatus, error = "") {
   pill.textContent = "Signed in";
   pill.classList.add("connected");
   actions.innerHTML = `<button class="button button-dark" data-sync-provider="${provider}">Import now</button><button class="button button-quiet" data-open-scraper="${provider}">Show browser</button>`;
-  detail.textContent = `${provider === "blackbaud" ? "Daymark reads your signed-in Assignment Center. " : "Daymark checks Assigned, Missing, and Done views. "}${lastSyncText(provider)}`;
+  detail.textContent = `${provider === "blackbaud" ? "OG Sync reads your signed-in Assignment Center. " : "OG Sync checks Assigned, Missing, and Done views. "}${lastSyncText(provider)}`;
 }
 
 async function readSyncStatus() {
   if (HOSTED) throw new Error("School imports run on your trusted Mac.");
   const response = await fetch("/api/status", { headers: { Accept: "application/json" }, cache: "no-store" });
-  if (!response.ok) throw new Error("The Daymark sync server is not running. Start it with npm start.");
+  if (!response.ok) throw new Error("The OG Sync server is not running. Start it with npm start.");
   const next = await response.json();
   if (!next?.scraper) throw new Error("The sync server returned an invalid status.");
   syncServerStatus = next;
@@ -770,7 +770,7 @@ function updateTimerDisplay() {
   if (ring) ring.style.setProperty("--progress", `${(1 - timer.remaining / timer.total) * 360}deg`);
   if (label) label.textContent = timer.running ? (timer.mode === "break" ? "Take a real break" : "Stay with it") : "Ready when you are";
   if (button) button.textContent = timer.running ? "Pause" : timer.remaining < timer.total ? "Resume" : "Start session";
-  document.title = timer.running ? `${timerText()} · Daymark` : "Daymark — School planner";
+  document.title = timer.running ? `${timerText()} · OG Sync` : "OG Sync — School planner";
 }
 
 function tickTimer() {
@@ -1013,7 +1013,7 @@ document.addEventListener("click", event => {
   if (event.target.closest("[data-export]")) {
     const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
-    const link = Object.assign(document.createElement("a"), { href: url, download: `daymark-backup-${dateKey()}.json` });
+    const link = Object.assign(document.createElement("a"), { href: url, download: `og-sync-backup-${dateKey()}.json` });
     link.click(); URL.revokeObjectURL(url); showToast("Backup exported.");
   }
   if (event.target.closest("[data-import]")) document.querySelector("#import-input").click();
@@ -1123,7 +1123,7 @@ document.querySelector("#grade-form").addEventListener("submit", event => {
 document.querySelector("#cloud-form").addEventListener("submit", async event => {
   event.preventDefault();
   const key = new FormData(event.currentTarget).get("key").trim();
-  if (key.length < 32) return showCloudSignIn("Use the 43-character Daymark sync key created during deployment.");
+  if (key.length < 32) return showCloudSignIn("Use the 43-character OG Sync key created during deployment.");
   cloud.key = key;
   cloud.revision = null;
   cloud.ready = true;
@@ -1132,7 +1132,7 @@ document.querySelector("#cloud-form").addEventListener("submit", async event => 
   if (await pullCloud()) {
     localStorage.setItem(CLOUD_KEY_STORE, key);
     cloudModal.close();
-    showToast("Daymark cloud connected.");
+    showToast("OG Sync cloud connected.");
   }
 });
 
@@ -1173,7 +1173,7 @@ document.querySelector("#import-input").addEventListener("change", async event =
     const data = JSON.parse(await file.text());
     if (!validState(data)) throw new Error("Invalid backup");
     state = ensureTombstones(data); window.DaymarkSync.migrateState(state); applyTombstones(state); save(); render(); showToast("Backup imported.");
-  } catch (_) { showToast("That file is not a valid Daymark backup."); }
+  } catch (_) { showToast("That file is not a valid OG Sync backup."); }
   event.target.value = "";
 });
 
