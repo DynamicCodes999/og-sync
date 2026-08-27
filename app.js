@@ -160,6 +160,10 @@ function sortTasks(tasks) {
   return [...tasks].sort((a, b) => Number(a.completed) - Number(b.completed) || dueTimestamp(a) - dueTimestamp(b) || priority[a.priority] - priority[b.priority]);
 }
 
+function isAssessment(task) {
+  return window.DaymarkSchool.isAssessment(task);
+}
+
 function relativeDate(key) {
   if (!key) return "No due date";
   const delta = Math.round((parseDate(key) - parseDate(dateKey())) / DAY);
@@ -330,16 +334,17 @@ async function pushCloudState() {
   }
 }
 
-function taskRows(tasks, actions = false) {
+function taskRows(tasks, actions = false, grouped = false) {
   if (!tasks.length) return '<div class="empty-state"><span class="empty-icon">✓</span><h3>Nothing here</h3><p>You have a little breathing room.</p></div>';
   return `<div class="task-list">${tasks.map(task => {
     const course = courseFor(task.courseId);
     const overdue = !task.completed && dueTimestamp(task) < Date.now() && task.due !== dateKey();
     const steps = task.subtasks || [];
     const stepText = steps.length ? ` · ${steps.filter(item => item.completed).length}/${steps.length} steps` : "";
-    return `<div class="task-row ${task.completed ? "done" : ""}">
+    const assessment = isAssessment(task);
+    return `<div class="task-row ${task.completed ? "done" : ""} ${assessment ? "assessment" : ""}">
       <input class="task-check" type="checkbox" data-toggle-task="${task.id}" ${task.completed ? "checked" : ""} aria-label="Mark ${e(task.title)} complete" />
-      <div><p class="task-title"><button class="task-title-button" data-task-detail="${task.id}">${e(task.title)}</button>${task.url ? `<a class="source-arrow" href="${e(task.url)}" target="_blank" rel="noreferrer" aria-label="Open ${e(task.title)} on the school site">↗</a>` : ""}</p><div class="task-meta"><span class="course-dot" style="--course-color:${course.color}"></span>${e(course.name)} · ${e(task.type)} · ${task.estimate || 25} min${stepText}</div></div>
+      <div><p class="task-title"><button class="task-title-button" data-task-detail="${task.id}">${e(task.title)}</button>${assessment ? '<span class="assessment-badge">Assessment</span>' : ""}${task.url ? `<a class="source-arrow" href="${e(task.url)}" target="_blank" rel="noreferrer" aria-label="Open ${e(task.title)} on the school site">↗</a>` : ""}</p><div class="task-meta">${grouped ? "" : `<span class="course-dot" style="--course-color:${course.color}"></span>${e(course.name)} · `}${e(task.type)} · ${task.estimate || 25} min${stepText}</div></div>
       <div style="display:flex;align-items:center"><div class="task-due ${overdue ? "overdue" : ""}"><strong>${overdue ? "Overdue" : relativeDate(task.due)}</strong><span>${formatTime(task.time)}</span></div>${actions ? `<div class="task-actions"><button class="mini-action" data-delete-task="${task.id}" aria-label="Delete ${e(task.title)}">${icons.trash}</button></div>` : ""}</div>
     </div>`;
   }).join("")}</div>`;
@@ -386,22 +391,26 @@ function renderDashboard() {
   const overdue = openTasks.filter(task => task.due && task.due < today).length;
   const dueToday = openTasks.filter(task => task.due === today).length;
   const dueSoon = openTasks.filter(task => task.due > today && task.due <= addDays(7)).length;
+  const assessments = openTasks.filter(isAssessment);
+  const regularTasks = openTasks.filter(task => !isAssessment(task));
+  const subjectGroups = [...new Set(regularTasks.map(task => task.courseId))].map(courseId => ({ course: courseFor(courseId), tasks: regularTasks.filter(task => task.courseId === courseId) }));
   const next = nextClass();
   const focusTask = openTasks[0];
   const firstName = state.profile.name ? `, ${e(state.profile.name)}` : "";
 
   app.innerHTML = `<section class="page home-page">
-    <div class="page-heading"><div><h1>${greeting()}${firstName}.</h1><p>${openTasks.length ? `Here’s what needs your attention. You have ${openTasks.length} open ${openTasks.length === 1 ? "assignment" : "assignments"}.` : "Everything is handled. Enjoy the clear desk."}</p></div></div>
-    <div class="card home-summary" aria-label="Assignment summary">
-      <div class="home-summary-item ${overdue ? "urgent" : ""}"><strong>${overdue}</strong><span>Overdue</span></div>
-      <div class="home-summary-item"><strong>${dueToday}</strong><span>Due today</span></div>
-      <div class="home-summary-item"><strong>${dueSoon}</strong><span>Next 7 days</span></div>
-    </div>
+    <div class="page-heading"><div><h1>${greeting()}${firstName}.</h1><p>${openTasks.length ? `${openTasks.length} open ${openTasks.length === 1 ? "item" : "items"}, organized by class so you can see what matters.` : "Everything is handled. Enjoy the clear desk."}</p></div></div>
     <div class="home-layout">
-      <article class="card home-work-card"><div class="card-header"><div><h2>What you need to do</h2><p>All open work, earliest due first</p></div><span class="home-open-count">${openTasks.length} open</span></div>${taskRows(openTasks.slice(0, 8))}<div class="home-card-footer">${openTasks.length > 8 ? `<span>${openTasks.length - 8} more in your planner</span>` : "<span>Keep the list short and finishable.</span>"}<button class="text-link" data-go="planner">Open planner →</button></div></article>
+      <div class="home-main">
+        ${assessments.length ? `<article class="card home-assessment-card"><div class="card-header"><div><h2>Tests & quizzes</h2><p>High-priority assessments stay above everyday work</p></div><span class="home-open-count">${assessments.length} upcoming</span></div>${taskRows(assessments)}</article>` : ""}
+        <article class="card home-subject-card"><div class="card-header"><div><h2>To-dos by subject</h2><p>Your next assignments, grouped by class</p></div><button class="text-link" data-go="planner">Open planner →</button></div>
+          ${subjectGroups.length ? subjectGroups.map(group => `<section class="home-subject"><div class="home-subject-heading"><div><span class="course-dot" style="--course-color:${group.course.color}"></span><h3>${e(group.course.name)}</h3></div><span>${group.tasks.length} ${group.tasks.length === 1 ? "item" : "items"}</span></div>${taskRows(group.tasks.slice(0, 3), false, true)}${group.tasks.length > 3 ? `<button class="home-subject-more" data-go="planner">+${group.tasks.length - 3} more in Planner</button>` : ""}</section>`).join("") : '<div class="empty-state"><span class="empty-icon">✓</span><h3>No regular assignments</h3><p>Your subject lists are clear.</p></div>'}
+        </article>
+      </div>
       <aside class="home-sidebar">
         <article class="card home-focus-card"><span class="home-card-label">Start here</span><h2>${focusTask ? e(focusTask.title) : "You’re caught up"}</h2><p>${focusTask ? `${e(courseFor(focusTask.courseId).name)} · ${focusTask.estimate || 25} min · ${relativeDate(focusTask.due)}` : "There are no open assignments waiting for you."}</p>${focusTask ? `<button class="button button-dark" data-focus-task="${focusTask.id}">Start focus session ${icons.arrow}</button>` : ""}</article>
         ${next ? `<article class="card home-next-card" style="--next-color:${next.course.color}"><div><span class="home-card-label">Next class${next.slot.rotation ? ` · ${e(next.slot.rotation)}` : ""}</span><h3>${e(next.course.name)}</h3><p>${e([next.slot.period, next.course.teacher, next.course.room].filter(Boolean).join(" · ") || "Schedule details")}</p></div><div class="home-next-time"><strong>${next.offset === 0 ? "Today" : next.offset === 1 ? "Tomorrow" : next.starts.toLocaleDateString(undefined, { weekday: "long" })}, ${formatTime(next.slot.start)}</strong><span>Ends ${formatTime(next.slot.end)}</span></div></article>` : `<article class="card home-next-card empty"><div><span class="home-card-label">Next class</span><h3>Add your schedule</h3><p>See the next period, room, and start time here.</p></div><button class="text-link" data-go="classes">Set up classes →</button></article>`}
+        <article class="card home-week-card"><h3>This week</h3><div><span>Overdue</span><strong class="${overdue ? "urgent" : ""}">${overdue}</strong></div><div><span>Due today</span><strong>${dueToday}</strong></div><div><span>Next 7 days</span><strong>${dueSoon}</strong></div></article>
       </aside>
     </div>
   </section>`;

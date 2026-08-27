@@ -79,18 +79,18 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .text-link:hover { color: var(--ink); }
 
 .home-page .page-heading { margin-bottom: 23px; }
-.home-summary { display: grid; grid-template-columns: repeat(3, 1fr); overflow: hidden; margin-bottom: 18px; }
-.home-summary-item { display: flex; align-items: baseline; gap: 9px; padding: 17px 21px; }
-.home-summary-item + .home-summary-item { border-left: 1px solid var(--line); }
-.home-summary-item strong { font-size: 24px; line-height: 1; letter-spacing: -.04em; }
-.home-summary-item span { color: var(--muted); font-size: 11px; font-weight: 650; }
-.home-summary-item.urgent strong, .home-summary-item.urgent span { color: var(--danger); }
 .home-layout { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(280px, .65fr); align-items: start; gap: 18px; }
-.home-work-card { overflow: hidden; }
+.home-main, .home-sidebar { display: grid; gap: 18px; }
+.home-assessment-card, .home-subject-card { overflow: hidden; }
+.home-assessment-card { border-color: #e5cbd2; border-top: 4px solid var(--brand); background: linear-gradient(180deg, #fffafd, #fff); }
 .home-open-count { border-radius: 999px; background: var(--surface-2); padding: 5px 9px; color: var(--muted); font-size: 10px; font-weight: 700; }
-.home-card-footer { display: flex; align-items: center; justify-content: space-between; gap: 15px; border-top: 1px solid var(--line); padding: 14px 22px; color: var(--muted); font-size: 10px; }
-.home-sidebar { display: grid; gap: 18px; }
-.home-focus-card, .home-next-card { padding: 24px; }
+.home-subject + .home-subject { border-top: 1px solid var(--line); }
+.home-subject-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 22px 7px; }
+.home-subject-heading > div { display: flex; align-items: center; gap: 9px; }
+.home-subject-heading h3 { margin: 0; font-size: 14px; letter-spacing: -.02em; }
+.home-subject-heading > span { color: var(--muted); font-size: 10px; font-weight: 650; }
+.home-subject-more { width: 100%; border: 0; background: transparent; padding: 0 22px 14px; color: var(--brand); cursor: pointer; font-size: 10px; font-weight: 650; text-align: left; }
+.home-focus-card, .home-next-card, .home-week-card { padding: 24px; }
 .home-focus-card { border-color: #ead7dc; background: linear-gradient(145deg, #fff 35%, #f7ecef); }
 .home-card-label { color: var(--brand); font-size: 11px; font-weight: 700; }
 .home-focus-card h2 { margin: 12px 0 6px; font-size: 22px; line-height: 1.15; letter-spacing: -.035em; }
@@ -104,6 +104,11 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .home-next-time strong, .home-next-time span { display: block; }
 .home-next-time strong { font-size: 11px; }
 .home-next-time span { color: var(--muted); font-size: 10px; text-align: right; }
+.home-week-card h3 { margin: 0 0 9px; font-size: 15px; }
+.home-week-card > div { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--line); padding: 11px 0; color: var(--muted); font-size: 11px; }
+.home-week-card > div:last-child { padding-bottom: 0; }
+.home-week-card strong { color: var(--ink); font-size: 14px; }
+.home-week-card strong.urgent { color: var(--danger); }
 .task-list { padding: 0 12px 12px; }
 .task-row { position: relative; display: grid; min-height: 66px; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: 10px; border-radius: 12px; padding: 8px 10px; transition: .16s ease; }
 .task-row:hover { background: #f7f8f4; }
@@ -113,6 +118,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .task-title { overflow: hidden; margin: 0 0 2px; font-size: 13px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
 .task-title-button { max-width: calc(100% - 24px); overflow: hidden; border: 0; background: transparent; padding: 0; cursor: pointer; font: inherit; font-weight: inherit; text-align: left; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
 .task-title-button:hover { text-decoration: underline; }
+.assessment-badge { display: inline-block; margin-left: 7px; border-radius: 999px; background: var(--brand); padding: 2px 7px; color: white; font-size: 8px; font-weight: 750; line-height: 1.5; vertical-align: 1px; }
 .source-arrow { margin-left: 5px; color: var(--muted); font-size: 11px; }
 .task-meta { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; }
 .course-dot { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; background: var(--course-color, #999); }
@@ -120,6 +126,9 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .task-due strong { display: block; font-size: 12px; font-weight: 650; }
 .task-due span { color: var(--muted); font-size: 11px; }
 .task-due.overdue strong { color: var(--danger); }
+.task-row.assessment { background: #fbf2f5; }
+.task-row.assessment:hover { background: #f7e8ed; }
+.task-row.assessment .task-title-button, .task-row.assessment .task-due strong { color: var(--brand-strong); }
 .task-row.done .task-title { color: #92968f; text-decoration: line-through; }
 .empty-state { padding: 35px 22px 42px; text-align: center; }
 .empty-icon { display: grid; width: 44px; height: 44px; margin: 0 auto 12px; place-items: center; border-radius: 13px; background: var(--surface-2); }
@@ -344,6 +353,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   .page { padding: 30px 20px 50px; }
   .home-layout, .focus-layout { grid-template-columns: 1fr; }
   .home-sidebar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .home-week-card { grid-column: 1 / -1; }
   .focus-side { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .focus-side > :last-child { grid-column: 1 / -1; }
   .sync-grid { grid-template-columns: 1fr; }
@@ -363,7 +373,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   .weekdays span { padding-right: 2px; }
   .classes-grid, .focus-side, .grades-grid { grid-template-columns: 1fr; }
   .home-sidebar { grid-template-columns: 1fr; }
-  .home-summary-item { align-items: center; flex-direction: column; gap: 3px; padding: 14px 8px; text-align: center; }
+  .home-week-card { grid-column: auto; }
   .focus-side > :last-child { grid-column: auto; }
   .timer-card { min-height: 510px; padding: 25px 14px; }
   .timer-ring { width: 238px; height: 238px; }

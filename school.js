@@ -39,5 +39,9 @@
     return { points, percent: points / future * 100, possible: points <= future };
   }
 
-  return { rotationForDate, gradeSummary, scoreNeeded };
+  function isAssessment(task) {
+    return /\b(test|quiz|exam|midterm|final|assessment)\b/i.test(`${task?.type || ""} ${task?.title || ""}`);
+  }
+
+  return { rotationForDate, gradeSummary, scoreNeeded, isAssessment };
 });
