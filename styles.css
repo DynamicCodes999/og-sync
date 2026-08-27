@@ -35,20 +35,6 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .nav-item:hover { background: #f0f1ec; color: var(--ink); }
 .nav-item.active { background: var(--brand); color: #fff; box-shadow: 0 6px 14px rgba(122, 38, 58, .18); }
 .nav-item svg { width: 19px; height: 19px; transform-box: fill-box; transform-origin: center; }
-.nav-item[data-page="dashboard"]:is(:hover, :focus-visible) svg { animation: icon-grid .42s ease-out; }
-.nav-item[data-page="calendar"]:is(:hover, :focus-visible) svg { animation: icon-calendar .42s ease-out; }
-.nav-item[data-page="planner"]:is(:hover, :focus-visible) svg { animation: icon-planner .42s ease-out; }
-.nav-item[data-page="focus"]:is(:hover, :focus-visible) svg { animation: icon-focus .48s ease-out; }
-.nav-item[data-page="classes"]:is(:hover, :focus-visible) svg { animation: icon-class .45s ease-out; }
-.nav-item[data-page="grades"]:is(:hover, :focus-visible) svg { animation: icon-grades .45s ease-out; }
-.nav-item[data-page="sync"]:is(:hover, :focus-visible) svg { animation: icon-sync .5s ease-out; }
-@keyframes icon-grid { 35% { transform: scale(.82) rotate(-5deg); } 70% { transform: scale(1.12) rotate(3deg); } }
-@keyframes icon-calendar { 35% { transform: translateY(-3px); } 65% { transform: translateY(1px); } }
-@keyframes icon-planner { 30% { transform: translateX(-3px); } 60% { transform: translateX(2px); } }
-@keyframes icon-focus { 35% { transform: rotate(-16deg) scale(.92); } 75% { transform: rotate(12deg) scale(1.06); } }
-@keyframes icon-class { 35% { transform: translateY(-2px) rotate(-7deg); } 70% { transform: rotate(4deg); } }
-@keyframes icon-grades { 35% { transform: translateY(3px) scaleY(.78); } 72% { transform: translateY(-2px) scaleY(1.08); } }
-@keyframes icon-sync { 70% { transform: rotate(300deg); } 100% { transform: rotate(360deg); } }
 .nav-count { min-width: 21px; border-radius: 12px; background: #e9ebe3; padding: 1px 6px; color: #60645d; font-size: 11px; text-align: center; }
 .active .nav-count { background: rgba(255,255,255,.16); color: white; }
 .sidebar-bottom { display: grid; gap: 8px; margin-top: auto; }
