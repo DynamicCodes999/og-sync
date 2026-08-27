@@ -259,6 +259,8 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .day-picker span { display: grid; min-height: 36px; place-items: center; border: 1px solid var(--line); border-radius: 9px; color: var(--muted); font-size: 10px; }
 .day-picker input:checked + span { border-color: var(--ink); background: var(--ink); color: white; }
 .form-note { margin: 11px 0 0; color: var(--muted); font-size: 10px; }
+.cloud-note { margin: -10px 0 20px; font-size: 12px; }
+.form-error { min-height: 18px; margin: 8px 0 0; color: var(--danger); font-size: 11px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 25px; }
 .search-input-wrap { display: grid; grid-template-columns: 21px 1fr auto; align-items: center; gap: 10px; border-bottom: 1px solid var(--line); }
 .search-input-wrap input { border: 0; padding: 0; font-size: 15px; box-shadow: none !important; }

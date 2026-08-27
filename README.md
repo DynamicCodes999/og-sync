@@ -1,8 +1,61 @@
 # Daymark
 
-A personal school planner with assignment tracking, editable classes, calendar and planner views, a Pomodoro timer, focus history, browser-session imports, duplicate protection, PWA support, and JSON backups.
+A private school planner with assignment tracking, editable classes, calendar and planner views, a Pomodoro timer, focus history, duplicate-safe Google Classroom and Blackbaud imports, cross-device cloud state, PWA support, and JSON backups.
 
-## Run locally
+## Use Daymark at school
+
+Production: [https://daymark-gilt.vercel.app](https://daymark-gilt.vercel.app)
+
+On a new device:
+
+1. Open the production URL.
+2. On the trusted Mac, open Terminal in this project and run:
+
+   ```bash
+   grep '^DAYMARK_SYNC_KEY=' .env.local
+   ```
+
+3. Copy only the value after `=` into Daymark’s **Connect this device** window.
+4. Keep that key in a password manager. It is the Daymark key, not a Google, Blackbaud, or school password.
+
+The key is stored in that browser until **Sync & import → Change sync key** is selected or site data is cleared. Do not save it on a shared school computer.
+
+## How production sync works
+
+- Vercel hosts the interface and an authenticated state API.
+- A private Vercel Blob stores normalized planner data.
+- The trusted Mac keeps Google and Blackbaud sessions under `.data/scraper-profile` and sends only classes, assignments, URLs, completion state, and sync timestamps.
+- The Mac helper starts at login and imports every 15 minutes while the Mac is awake and online.
+- The hosted app refreshes cloud state every minute while open.
+- If the Mac is off, the hosted planner still works with the last successful cloud state; new school imports resume after the Mac comes back online.
+
+The helper is already installed on this Mac. Useful commands:
+
+```bash
+npm run helper:install
+npm run helper:uninstall
+tail -f .data/helper.log .data/helper-error.log
+```
+
+## School sign-ins
+
+Passwords must only be entered on the official provider pages opened by the local Daymark helper.
+
+1. Run `npm start` if the helper is not running.
+2. Open [http://localhost:4173/#sync](http://localhost:4173/#sync).
+3. Select **Open sign-in browser** for Google Classroom or My Oak Grove.
+4. Finish sign-in in the dedicated Chromium window.
+5. Select **Import now**.
+
+The saved sessions are reused by automatic imports. Delete `.data/scraper-profile` only when intentionally signing the helper out of both services.
+
+## Duplicate and deletion rules
+
+Daymark first matches each provider’s stable assignment ID. If Google and Blackbaud expose the same work under different IDs, it falls back to normalized title + matched class + due date. Repeated imports update one task. A different class or due date remains separate.
+
+Deleting imported work creates a deletion marker, so the next automatic import does not recreate it. Cloud writes use revision checks; if two devices change state at once, Daymark merges the fresh import and the user edit instead of silently overwriting either one.
+
+## Local development
 
 Requires Node.js 20 or newer.
 
@@ -12,56 +65,30 @@ npx playwright install chromium
 npm start
 ```
 
-Open [http://localhost:4173](http://localhost:4173). Assignments, classes, focus history, and scraper login sessions stay on this Mac. Use **Sync & import → Export data** before clearing browser data.
+Open [http://localhost:4173](http://localhost:4173). Local planner state stays in that browser, while signed-in scraper sessions stay in `.data/scraper-profile`.
 
-## Import from Google Classroom
+## Vercel configuration
 
-1. Open **Sync & import** in Daymark.
-2. Under Google Classroom, select **Open sign-in browser**.
-3. Sign in on Google's page using the dedicated Chromium window. Daymark never sees the email, password, MFA code, or SSO exchange.
-4. Return to Daymark and select **Import now**.
+The private `dynamicdigital/daymark` Vercel project is connected to the private GitHub repository. It uses:
 
-Daymark visits Classroom's Assigned, Missing, and Done views, reads the assignments rendered for the signed-in student, and updates the local planner.
+- `DAYMARK_SYNC_KEY`: sensitive random bearer key for the state API.
+- `BLOB_READ_WRITE_TOKEN`: Vercel-managed private Blob credential.
+- `DAYMARK_CLOUD_URL`: development-only URL used by the Mac bridge.
 
-## Import from My Oak Grove
+Deploy manually when needed:
 
-1. Under My Oak Grove, select **Open sign-in browser**.
-2. Sign in on the official Blackbaud/Oak Grove pages.
-3. Return to Daymark and select **Import now**.
+```bash
+npx vercel@latest build --prod
+npx vercel@latest deploy --prebuilt --prod --yes
+```
 
-The scraper reuses one dedicated browser window; sign in and import one service at a time. Its session is stored locally at `.data/scraper-profile`, so your Google and Blackbaud sessions remain available when you switch services. Closing the browser does not erase them. Delete that folder only when you intentionally want to sign out and forget the scraper session.
-
-## Duplicate rules
-
-Daymark first matches a stable assignment ID found in the page link. If Google Classroom and Blackbaud expose the same work under different IDs, it falls back to normalized title + matched class + due date. Repeated imports update one task. The same title in another class or on another due date stays separate.
-
-## Limits of scraping
-
-This is a local assisted importer, not an official API integration:
-
-- Google or Blackbaud can change their page markup and require an extractor update.
-- Google imports only assignments rendered in Classroom's To-do views. Blackbaud imports the complete signed-in Assignment Center response.
-- The visible browser must run on the same Mac as Daymark, so this scraper is not suitable for a headless cloud deployment.
-- Passwords must only be entered on the official provider pages. They never belong in `.env`, source files, logs, or chat.
-
-## Vercel is not the sync computer
-
-Deploying the current files to Vercel can host the interface, but it will not make the existing data or scraper portable. Planner data currently lives in one browser's `localStorage`, while the signed-in Playwright profile lives on this Mac.
-
-The safe production design is:
-
-1. Keep the signed-in Google and Blackbaud scraper on a trusted computer.
-2. Upload only normalized classes, assignments, and sync timestamps to an authenticated cloud database.
-3. Let the Vercel app read that data after you sign into Daymark.
-
-School passwords and provider session cookies must not be uploaded to Vercel. Until the cloud database and Daymark login are added, use **Export data** on one device and **Import backup** on another.
-
-## Optional protection
-
-For localhost, `.env` is optional. If Daymark is exposed beyond this Mac, copy `.env.example` to `.env`, use HTTPS, and set a unique `DAYMARK_PASSWORD`. Do not reuse a school password.
+Never commit `.env`, `.env.local`, `.data`, or `.vercel`. Never place school passwords, MFA codes, or provider cookies in Vercel.
 
 ## Verify
 
 ```bash
 npm test
+npm run build
 ```
+
+The tests cover duplicate protection, provider ID stability, deleted-import behavior, conflicting device writes, current-class filtering, due-date parsing, and the future Band syllabus assignment.

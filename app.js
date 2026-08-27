@@ -1,5 +1,7 @@
 const STORE_KEY = "daymark-state-v2";
+const CLOUD_KEY_STORE = "daymark-cloud-key-v1";
 const DAY = 86_400_000;
+const HOSTED = !["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
 
 const icons = {
   arrow: '<svg viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>',
@@ -36,14 +38,23 @@ function defaultState() {
     ],
     tasks: [],
     sessions: [],
-    sync: {}
+    sync: {},
+    tombstones: { tasks: {}, courses: {}, sessions: {}, sources: {} }
   };
+}
+
+function ensureTombstones(target) {
+  target.sync ||= {};
+  target.tombstones ||= {};
+  for (const key of ["tasks", "courses", "sessions", "sources"]) target.tombstones[key] ||= {};
+  return target;
 }
 
 function loadState() {
   try {
     const parsed = JSON.parse(localStorage.getItem(STORE_KEY));
     if (validState(parsed)) {
+      ensureTombstones(parsed);
       let changed = window.DaymarkSync.migrateState(parsed) > 0;
       if (!parsed.courses.some(course => /^(?:concert\s+)?band$/i.test(course.name.trim()))) {
         parsed.courses.push({ id: "band", name: "Band", teacher: "", room: "", color: "#d7dded", schedule: [] });
@@ -66,7 +77,9 @@ function validState(data) {
   if (!data.courses.every(course => id(course.id) && text(course.name, 80) && text(course.teacher, 80) && text(course.room, 40) && /^#[0-9a-f]{6}$/i.test(course.color) && sources(course.sources) && Array.isArray(course.schedule) && course.schedule.length <= 20 && course.schedule.every(slot => Number.isInteger(slot.day) && slot.day >= 0 && slot.day <= 6 && time(slot.start) && time(slot.end)))) return false;
   const courseIds = new Set(data.courses.map(course => course.id));
   if (!data.tasks.every(task => id(task.id) && text(task.title, 100) && (courseIds.has(task.courseId) || task.courseId === "personal") && (task.due === "" || date(task.due)) && time(task.time) && text(task.type, 30) && Number.isFinite(task.estimate) && task.estimate >= 0 && task.estimate <= 1440 && ["low", "normal", "high"].includes(task.priority) && typeof task.completed === "boolean" && sources(task.sources) && (task.url === undefined || task.url === "" || (text(task.url, 2000) && /^https:\/\//.test(task.url))) && (task.description === undefined || text(task.description, 5000)))) return false;
-  return data.sessions.every(session => id(session.id) && date(session.date) && Number.isFinite(session.minutes) && session.minutes >= 0 && session.minutes <= 1440 && text(session.label, 100));
+  if (!data.sessions.every(session => id(session.id) && date(session.date) && Number.isFinite(session.minutes) && session.minutes >= 0 && session.minutes <= 1440 && text(session.label, 100))) return false;
+  const validMap = value => value === undefined || (value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length <= 5000 && Object.entries(value).every(([key, stamp]) => key.length <= 300 && Number.isFinite(Date.parse(stamp))));
+  return data.tombstones === undefined || (data.tombstones && ["tasks", "courses", "sessions", "sources"].every(key => validMap(data.tombstones[key])));
 }
 
 let state = loadState();
@@ -82,9 +95,26 @@ const taskModal = document.querySelector("#task-modal");
 const searchModal = document.querySelector("#search-modal");
 const profileModal = document.querySelector("#profile-modal");
 const classModal = document.querySelector("#class-modal");
+const cloudModal = document.querySelector("#cloud-modal");
+const cloud = {
+  key: HOSTED ? localStorage.getItem(CLOUD_KEY_STORE) || "" : "",
+  revision: null,
+  ready: !HOSTED,
+  dirty: false,
+  saving: false,
+  timer: null,
+  retryTimer: null
+};
+if (cloud.key) cloud.ready = true;
 
 function save() {
+  ensureTombstones(state);
   localStorage.setItem(STORE_KEY, JSON.stringify(state));
+  if (HOSTED && cloud.ready && cloud.key) {
+    cloud.dirty = true;
+    clearTimeout(cloud.timer);
+    cloud.timer = setTimeout(pushCloudState, 500);
+  }
 }
 
 function e(value = "") {
@@ -137,6 +167,143 @@ function showToast(message) {
   toast.classList.add("show");
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => toast.classList.remove("show"), 3000);
+}
+
+function cloudHeaders() {
+  return { Accept: "application/json", Authorization: `Bearer ${cloud.key}`, "Content-Type": "application/json" };
+}
+
+function setCloudLabel(message) {
+  const label = document.querySelector(".profile-button small");
+  if (label) label.textContent = HOSTED ? message : "Local workspace";
+}
+
+function newestTombstones(first = {}, second = {}) {
+  const result = { ...first };
+  for (const [key, value] of Object.entries(second)) {
+    if (!result[key] || Date.parse(value) > Date.parse(result[key])) result[key] = value;
+  }
+  return result;
+}
+
+function mergeById(remote, local) {
+  const merged = new Map(remote.map(item => [item.id, structuredClone(item)]));
+  for (const item of local) merged.set(item.id, structuredClone(item));
+  return [...merged.values()];
+}
+
+function applyTombstones(target) {
+  ensureTombstones(target);
+  const deleted = target.tombstones;
+  target.tasks = target.tasks.filter(task => !deleted.tasks[task.id] && !(task.sources || []).some(source => deleted.sources[window.DaymarkSync.sourceKey(source.provider, source.id)]));
+  target.sessions = target.sessions.filter(session => !deleted.sessions[session.id]);
+  const usedCourses = new Set(target.tasks.map(task => task.courseId));
+  target.courses = target.courses.filter(course => !deleted.courses[course.id] || usedCourses.has(course.id));
+  return target;
+}
+
+function mergeCloudConflict(remoteInput, localInput) {
+  const remote = ensureTombstones(structuredClone(remoteInput));
+  const local = ensureTombstones(structuredClone(localInput));
+  const sync = { ...remote.sync };
+  for (const [provider, result] of Object.entries(local.sync)) {
+    const remoteTime = Date.parse(sync[provider]?.lastSyncedAt || "") || 0;
+    const localTime = Date.parse(result?.lastSyncedAt || "") || 0;
+    if (localTime >= remoteTime) sync[provider] = result;
+  }
+  const merged = {
+    profile: local.profile,
+    courses: mergeById(remote.courses, local.courses),
+    tasks: mergeById(remote.tasks, local.tasks),
+    sessions: mergeById(remote.sessions, local.sessions),
+    sync,
+    tombstones: {}
+  };
+  for (const key of ["tasks", "courses", "sessions", "sources"]) merged.tombstones[key] = newestTombstones(remote.tombstones[key], local.tombstones[key]);
+  return applyTombstones(merged);
+}
+
+function tombstone(kind, item) {
+  ensureTombstones(state);
+  const stamp = new Date().toISOString();
+  state.tombstones[kind][item.id] = stamp;
+  for (const source of item.sources || []) state.tombstones.sources[window.DaymarkSync.sourceKey(source.provider, source.id)] = stamp;
+}
+
+function showCloudSignIn(message = "") {
+  if (!HOSTED || !cloudModal) return;
+  document.querySelector("#cloud-key-error").textContent = message;
+  document.querySelector("#cloud-key").value = cloud.key;
+  if (!cloudModal.open) cloudModal.showModal();
+  setTimeout(() => document.querySelector("#cloud-key").focus(), 50);
+}
+
+async function pullCloud({ quiet = false } = {}) {
+  if (!HOSTED || !cloud.key || cloud.saving || cloud.dirty) return false;
+  setCloudLabel("Syncing cloud…");
+  try {
+    const response = await fetch("/api/state", { headers: cloudHeaders(), cache: "no-store" });
+    const result = await response.json().catch(() => ({}));
+    if (response.status === 401) {
+      cloud.ready = false;
+      showCloudSignIn("That sync key was not accepted.");
+      throw new Error("Invalid Daymark sync key");
+    }
+    if (!response.ok || !validState(result.state)) throw new Error(result.error || "Cloud sync failed");
+    state = ensureTombstones(result.state);
+    cloud.revision = result.revision || null;
+    cloud.ready = true;
+    localStorage.setItem(STORE_KEY, JSON.stringify(state));
+    setCloudLabel("Cloud synced");
+    render();
+    return true;
+  } catch (error) {
+    setCloudLabel("Cloud offline · saved here");
+    if (!quiet && error.message !== "Invalid Daymark sync key") showToast(error.message);
+    return false;
+  }
+}
+
+async function pushCloudState() {
+  if (!HOSTED || !cloud.ready || !cloud.key || cloud.saving || !cloud.dirty) return;
+  cloud.saving = true;
+  clearTimeout(cloud.retryTimer);
+  cloud.retryTimer = null;
+  setCloudLabel("Saving to cloud…");
+  try {
+    for (let attempt = 0; attempt < 3 && cloud.dirty; attempt++) {
+      cloud.dirty = false;
+      const response = await fetch("/api/state", {
+        method: "PUT",
+        headers: cloudHeaders(),
+        body: JSON.stringify({ state, revision: cloud.revision })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (response.status === 409 && validState(result.state)) {
+        state = mergeCloudConflict(result.state, state);
+        cloud.revision = result.revision || null;
+        cloud.dirty = true;
+        localStorage.setItem(STORE_KEY, JSON.stringify(state));
+        continue;
+      }
+      if (response.status === 401) {
+        cloud.ready = false;
+        showCloudSignIn("That sync key was not accepted.");
+        throw new Error("Invalid Daymark sync key");
+      }
+      if (!response.ok) throw new Error(result.error || "Could not save to cloud");
+      cloud.revision = result.revision || null;
+    }
+    setCloudLabel(cloud.dirty ? "Cloud retry needed" : "Cloud synced");
+  } catch (error) {
+    cloud.dirty = true;
+    setCloudLabel("Cloud offline · saved here");
+    if (error.message !== "Invalid Daymark sync key") showToast(`${error.message}. Your changes are saved on this device.`);
+    cloud.retryTimer = setTimeout(pushCloudState, 30_000);
+  } finally {
+    cloud.saving = false;
+    if (cloud.dirty && cloud.ready && !cloud.retryTimer) cloud.timer = setTimeout(pushCloudState, 500);
+  }
 }
 
 function taskRows(tasks, actions = false) {
@@ -325,6 +492,20 @@ function renderClasses() {
 }
 
 function renderSync() {
+  if (HOSTED) {
+    app.innerHTML = `<section class="page">
+      <div class="page-heading"><div class="sync-intro"><span class="eyebrow">Available anywhere</span><h1>Cloud sync</h1><p>Your planner is protected by your private Daymark sync key. The trusted Mac imports school data; this browser receives the normalized assignments.</p></div><button class="button button-quiet" data-cloud-refresh>Refresh now</button></div>
+      <div class="sync-grid">
+        ${cloudProviderCard("google", "G", "Google Classroom")}
+        ${cloudProviderCard("blackbaud", "B", "My Oak Grove · Blackbaud")}
+        <article class="card integration-card"><div class="integration-top"><span class="integration-logo">☁</span><span class="status-pill connected">Connected</span></div><h2>Daymark cloud</h2><p>This device saves planner changes to your private Vercel storage. School passwords and provider cookies never leave your Mac.</p><button class="button button-quiet" data-cloud-disconnect>Change sync key</button></article>
+        <article class="card integration-card"><div class="integration-top"><span class="integration-logo">↕</span><span class="status-pill">Backup</span></div><h2>Export or restore</h2><p>Keep a portable JSON backup, or restore one and send it to your cloud workspace.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="button button-dark" data-export>Export data</button><button class="button button-quiet" data-import>Import backup</button></div></article>
+        <article class="card integration-card"><div class="integration-top"><span class="integration-logo">⌫</span><span class="status-pill">All devices</span></div><h2>Clear assignments & history</h2><p>Remove every task and focus session from Daymark while keeping your class setup and profile.</p><button class="button button-quiet danger-link" data-clear-work>Clear work data</button></article>
+        <aside class="card privacy-card"><span class="integration-logo">${icons.shield}</span><div><h3>Your school credentials are not in Vercel.</h3><p>The Mac helper keeps Google and Blackbaud sessions in .data/scraper-profile and uploads only classes, assignment details, and sync timestamps.</p></div></aside>
+      </div>
+    </section>`;
+    return;
+  }
   app.innerHTML = `<section class="page">
     <div class="page-heading"><div class="sync-intro"><span class="eyebrow">Bring school into focus</span><h1>Browser import</h1><p>Sign in through a dedicated browser window, then Daymark reads the assignments shown to your student account. Repeated imports update existing work instead of duplicating it.</p></div></div>
     <div class="sync-grid">
@@ -336,6 +517,12 @@ function renderSync() {
     </div>
   </section>`;
   refreshSyncStatus();
+}
+
+function cloudProviderCard(provider, mark, title) {
+  const result = state.sync?.[syncStateKeys[provider]];
+  const connected = Number.isFinite(Date.parse(result?.lastSyncedAt || ""));
+  return `<article class="card integration-card"><div class="integration-top"><span class="integration-logo ${provider}">${mark}</span><span class="status-pill ${connected ? "connected" : ""}">${connected ? "Synced by Mac" : "Waiting for Mac"}</span></div><h2>${title}</h2><p>${connected ? lastSyncText(provider) : "Run the Daymark helper on your trusted Mac once to send this service’s assignments to the cloud."}</p></article>`;
 }
 
 function integrationCard(provider, mark, title, description) {
@@ -402,6 +589,7 @@ function paintSyncProvider(provider, status = syncServerStatus, error = "") {
 }
 
 async function readSyncStatus() {
+  if (HOSTED) throw new Error("School imports run on your trusted Mac.");
   const response = await fetch("/api/status", { headers: { Accept: "application/json" }, cache: "no-store" });
   if (!response.ok) throw new Error("The Daymark sync server is not running. Start it with npm start.");
   const next = await response.json();
@@ -443,7 +631,8 @@ async function runSync(provider, { silent = false } = {}) {
     save();
     if (currentPage() === "sync") renderSync();
     else render();
-    if (!silent || counts.imported) {
+    if (payload.cloud?.error) showToast(`Assignments imported here, but cloud upload failed: ${payload.cloud.error}`);
+    else if (!silent || counts.imported) {
       const existing = counts.updated + counts.merged;
       showToast(counts.imported ? `${counts.imported} new ${counts.imported === 1 ? "assignment" : "assignments"}; ${existing} existing checked or updated.` : `No duplicates added; ${existing} assignments checked.`);
     }
@@ -460,6 +649,10 @@ async function runSync(provider, { silent = false } = {}) {
 }
 
 async function autoSync() {
+  if (HOSTED) {
+    if (!document.hidden && cloud.key && cloud.ready && !cloud.dirty) await pullCloud({ quiet: true });
+    return;
+  }
   if (document.hidden || syncBusy.size) return;
   try {
     const status = await readSyncStatus();
@@ -609,6 +802,8 @@ document.addEventListener("click", event => {
 
   const deleteButton = event.target.closest("[data-delete-task]");
   if (deleteButton && confirm("Delete this task?")) {
+    const task = state.tasks.find(item => item.id === deleteButton.dataset.deleteTask);
+    if (task) tombstone("tasks", task);
     state.tasks = state.tasks.filter(task => task.id !== deleteButton.dataset.deleteTask);
     save(); render(); showToast("Task deleted.");
   }
@@ -624,7 +819,7 @@ document.addEventListener("click", event => {
     const course = state.courses.find(item => item.id === deleteClass.dataset.deleteClass);
     const taskCount = state.tasks.filter(task => task.courseId === course?.id).length;
     if (taskCount) showToast(`Move or delete ${taskCount} linked ${taskCount === 1 ? "task" : "tasks"} first.`);
-    else if (course && confirm(`Delete ${course.name}?`)) { state.courses = state.courses.filter(item => item.id !== course.id); save(); renderClasses(); showToast("Class deleted."); }
+    else if (course && confirm(`Delete ${course.name}?`)) { tombstone("courses", course); state.courses = state.courses.filter(item => item.id !== course.id); save(); renderClasses(); showToast("Class deleted."); }
   }
 
   const timerMode = event.target.closest("[data-timer-mode]");
@@ -639,7 +834,24 @@ document.addEventListener("click", event => {
     link.click(); URL.revokeObjectURL(url); showToast("Backup exported.");
   }
   if (event.target.closest("[data-import]")) document.querySelector("#import-input").click();
-  if (event.target.closest("[data-clear-work]") && confirm("Delete every assignment and focus session from this browser?")) { state.tasks = []; state.sessions = []; save(); render(); showToast("Assignments and focus history cleared."); }
+  if (event.target.closest("[data-clear-work]") && confirm(`Delete every assignment and focus session${HOSTED ? " from all connected devices" : " from this browser"}?`)) {
+    for (const task of state.tasks) tombstone("tasks", task);
+    for (const session of state.sessions) tombstone("sessions", session);
+    state.tasks = [];
+    state.sessions = [];
+    save(); render(); showToast("Assignments and focus history cleared.");
+  }
+
+  if (event.target.closest("[data-cloud-refresh]")) {
+    if (cloud.dirty) pushCloudState();
+    else pullCloud();
+  }
+  if (event.target.closest("[data-cloud-disconnect]")) {
+    cloud.ready = false;
+    cloud.revision = null;
+    localStorage.removeItem(CLOUD_KEY_STORE);
+    showCloudSignIn();
+  }
 
   const openScraper = event.target.closest("[data-open-scraper]");
   if (openScraper) openScraperBrowser(openScraper.dataset.openScraper);
@@ -681,6 +893,26 @@ document.querySelector("#profile-form").addEventListener("submit", event => {
   save(); profileModal.close(); render(); showToast("Workspace updated.");
 });
 
+document.querySelector("#cloud-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const key = new FormData(event.currentTarget).get("key").trim();
+  if (key.length < 32) return showCloudSignIn("Use the 43-character Daymark sync key created during deployment.");
+  cloud.key = key;
+  cloud.revision = null;
+  cloud.ready = true;
+  cloud.dirty = false;
+  document.querySelector("#cloud-key-error").textContent = "Connecting…";
+  if (await pullCloud()) {
+    localStorage.setItem(CLOUD_KEY_STORE, key);
+    cloudModal.close();
+    showToast("Daymark cloud connected.");
+  }
+});
+
+cloudModal.addEventListener("cancel", event => {
+  if (!cloud.ready) event.preventDefault();
+});
+
 document.querySelector("#class-form").addEventListener("submit", event => {
   event.preventDefault();
   if (event.submitter?.value === "cancel") return classModal.close();
@@ -713,7 +945,7 @@ document.querySelector("#import-input").addEventListener("change", async event =
   try {
     const data = JSON.parse(await file.text());
     if (!validState(data)) throw new Error("Invalid backup");
-    state = data; save(); render(); showToast("Backup imported.");
+    state = ensureTombstones(data); window.DaymarkSync.migrateState(state); applyTombstones(state); save(); render(); showToast("Backup imported.");
   } catch (_) { showToast("That file is not a valid Daymark backup."); }
   event.target.value = "";
 });
@@ -723,5 +955,6 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) { ti
 if ("serviceWorker" in navigator && location.protocol !== "file:") navigator.serviceWorker.register("./sw.js").catch(() => {});
 if (!location.hash) history.replaceState(null, "", "#dashboard");
 render();
-setTimeout(autoSync, 1_500);
-setInterval(autoSync, 15 * 60_000);
+if (HOSTED && !cloud.key) showCloudSignIn();
+else setTimeout(autoSync, 1_500);
+setInterval(autoSync, HOSTED ? 60_000 : 15 * 60_000);

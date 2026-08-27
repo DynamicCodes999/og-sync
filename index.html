@@ -7,7 +7,7 @@
     <meta name="description" content="A calm, local-first school planner." />
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="icon" href="./icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="./styles.css?v=6" />
+    <link rel="stylesheet" href="./styles.css?v=7" />
     <title>Daymark — School planner</title>
   </head>
   <body>
@@ -122,9 +122,19 @@
       </form>
     </dialog>
 
+    <dialog class="modal modal-small" id="cloud-modal">
+      <form method="dialog" id="cloud-form">
+        <div class="modal-header"><div><span class="eyebrow">Private cloud</span><h2>Connect this device</h2></div></div>
+        <p class="form-note cloud-note">Enter the Daymark sync key created during deployment. This is not your Google, Blackbaud, or school password.</p>
+        <label>Daymark sync key<input id="cloud-key" name="key" type="password" required minlength="32" maxlength="200" autocomplete="off" spellcheck="false" /></label>
+        <p class="form-error" id="cloud-key-error" role="alert"></p>
+        <div class="modal-actions"><button class="button button-dark" type="submit">Connect securely</button></div>
+      </form>
+    </dialog>
+
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <input id="import-input" type="file" accept="application/json,.json" hidden />
-    <script src="./sync.js?v=6"></script>
-    <script src="./app.js?v=6"></script>
+    <script src="./sync.js?v=7"></script>
+    <script src="./app.js?v=7"></script>
   </body>
 </html>

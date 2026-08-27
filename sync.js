@@ -34,6 +34,14 @@
     return (item.sources || []).some(source => source.provider === provider && source.id === id);
   }
 
+  function sourceKey(provider, id) {
+    return `${provider}:${id}`;
+  }
+
+  function sourceWasDeleted(state, provider, id) {
+    return Boolean(state.tombstones?.sources?.[sourceKey(provider, id)]);
+  }
+
   function addSource(item, source) {
     item.sources ||= [];
     if (!sourceMatch(item, source.provider, source.id)) item.sources.push(source);
@@ -98,6 +106,7 @@
     for (const remote of payload.assignments) {
       const sourceId = String(remote?.sourceId || "");
       if (!sourceId || !String(remote.title || "").trim()) continue;
+      if (sourceWasDeleted(state, provider, sourceId)) continue;
       let course = courseBySource.get(String(remote.courseSourceId || ""));
       if (!course) course = ensureCourse(state, { sourceId: remote.courseSourceId || remote.courseName, name: remote.courseName || "Imported class" }, provider, idFactory);
       const next = cleanAssignment(remote, course, provider, syncedAt);
@@ -125,10 +134,16 @@
   }
 
   function migrateState(state) {
+    const rejectedSource = sourceKey("blackbaud", "4b261956b94e2c1ea180");
     const before = state.tasks.length;
-    state.tasks = state.tasks.filter(task => !(task.sources || []).some(source => source.provider === "blackbaud" && source.id === "4b261956b94e2c1ea180"));
+    state.tasks = state.tasks.filter(task => !(task.sources || []).some(source => sourceKey(source.provider, source.id) === rejectedSource));
+    if (before !== state.tasks.length) {
+      state.tombstones ||= {};
+      state.tombstones.sources ||= {};
+      state.tombstones.sources[rejectedSource] = new Date().toISOString();
+    }
     return before - state.tasks.length;
   }
 
-  return { normalizeText, classKey, canonicalKey, mergeImported, migrateState };
+  return { normalizeText, classKey, canonicalKey, mergeImported, migrateState, sourceKey };
 });

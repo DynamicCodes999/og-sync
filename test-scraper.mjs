@@ -7,10 +7,10 @@ test("scraper extracts real classes, dates, and stable IDs", async () => {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
   try {
-    await page.setContent(`<base href="https://classroom.google.com"><main><article>
-      <a href="/c/course-1/a/work-1/details">Chapter 4 Review!</a>
-      <span>Algebra II</span><span>Due Aug 29, 2026 at 10:00 AM</span>
-    </article></main>`);
+    await page.setContent(`<base href="https://classroom.google.com"><main>
+      <a href="/c/course-1/a/work-1/details"><div>assignment</div><div>Chapter 4 Review!</div><div>Algebra II - 8 - 26-27</div><div>Saturday, Aug 29, 2026 at 10:00 AM</div></a>
+      <a href="/c/old-course/a/old-work/details"><div>assignment</div><div>Old scale sheet</div><div>06 BAND</div><div>Posted Monday, May 20, 2024</div></a>
+    </main>`);
     const google = await visibleAssignments(page, "google");
     assert.deepEqual(google.map(({ sourceId, course, title, due, time }) => ({ sourceId, course, title, due, time })), [{
       sourceId: "course-1:work-1",

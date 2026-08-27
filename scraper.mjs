@@ -40,7 +40,7 @@ function signedIn(provider, page) {
     : /oakgrovelutheran\.myschoolapp\.com/i.test(url) && !/#login(?:\/|$|\?)/i.test(url);
 }
 
-export async function openScraper(provider) {
+export async function openScraper(provider, { foreground = true } = {}) {
   validProvider(provider);
   const browser = await browserContext();
   let page = livePage(provider);
@@ -51,7 +51,7 @@ export async function openScraper(provider) {
     pages.set(provider, page);
     await page.goto(PROVIDERS[provider], { waitUntil: "domcontentloaded", timeout: 30_000 }).catch(() => {});
   }
-  await page.bringToFront();
+  if (foreground) await page.bringToFront();
   return { provider, url: page.url() };
 }
 
@@ -97,7 +97,7 @@ export async function visibleAssignments(page, provider, completed = false) {
       ["Chemistry", /\bchemistry\b/i],
       ["German 1", /\bgerman\s*(?:1|i)\b/i],
       ["Western Civ", /\bwestern\s+civ(?:ilization)?\b/i],
-      ["Band", /\b(?:concert\s+band(?:\s+ensemble)?|band)\b/i]
+      ["Band", /\bconcert\s+band(?:\s+ensemble)?\b/i]
     ];
     const clean = value => String(value || "").replace(/\s+/g, " ").trim();
     const textOf = element => clean([...element.childNodes].map(node => node.nodeType === 3 ? node.textContent : node.innerText).join(" "));
@@ -109,7 +109,8 @@ export async function visibleAssignments(page, provider, completed = false) {
     };
     const dueFrom = text => {
       const now = new Date();
-      const segment = text.match(/(?:due|missing|overdue)(?:\s+date)?\s*[:\-]?\s*([^\n|\u2022]{1,45})/i)?.[1] || text;
+      const segment = text.match(/(?:due|missing|overdue)(?:\s+date)?\s*[:\-]?\s*([^\n|\u2022]{1,45})/i)?.[1];
+      if (!segment || /\bno\s+due\s+date\b/i.test(text)) return "";
       if (/\btoday\b/i.test(segment)) return iso(now);
       if (/\btomorrow\b/i.test(segment)) return iso(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1));
       if (/\byesterday\b/i.test(segment)) return iso(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1));
@@ -154,11 +155,14 @@ export async function visibleAssignments(page, provider, completed = false) {
       for (const anchor of document.querySelectorAll('a[href*="/c/"][href*="/a/"]')) {
         const url = anchor.href;
         const match = url.match(/\/c\/([^/]+)\/a\/([^/?#]+)/);
-        const title = clean(anchor.innerText || anchor.getAttribute("aria-label"));
+        const lines = String(anchor.innerText || "").split("\n").map(clean).filter(Boolean);
+        const title = lines[1] || "";
         if (!match || title.length < 2 || title.length > 180) continue;
-        const context = contextFor(anchor);
-        const course = courseFrom(context);
-        output.push({ sourceId: `${match[1]}:${match[2]}`, course, title, due: dueFrom(context), time: timeFrom(context), type: typeFrom(context), completed, url });
+        const course = courseFrom(lines[2]);
+        if (!course) continue;
+        const details = lines.slice(3).join(" ");
+        const due = /\bposted\b/i.test(details) ? "" : dueFrom(`Due ${details}`);
+        output.push({ sourceId: `${match[1]}:${match[2]}`, course, title, due, time: timeFrom(details), type: typeFrom(title), completed, url });
       }
     } else {
       for (const anchor of document.querySelectorAll('a[href*="/lms-assignment/assignment/"]')) {
@@ -258,11 +262,11 @@ async function scrapeBlackbaud(page) {
   return payload("blackbaud", items);
 }
 
-export async function runScraper(provider) {
+export async function runScraper(provider, { foreground = true } = {}) {
   validProvider(provider);
   const page = livePage(provider);
   if (!page) throw new Error(`Open the ${provider === "google" ? "Google Classroom" : "My Oak Grove"} sign-in browser first.`);
-  await page.bringToFront();
+  if (foreground) await page.bringToFront();
   return provider === "google" ? scrapeGoogle(page) : scrapeBlackbaud(page);
 }
 
@@ -277,6 +281,8 @@ export async function inspectScraper(provider) {
     rows: [...document.querySelectorAll('tr, [role="row"], article, li')].map(item => String(item.innerText || "").replace(/\s+/g, " ").trim()).filter(text => text.length >= 5 && text.length <= 500).slice(0, 80),
     links: [...document.querySelectorAll("a[href]")].map(item => ({
       text: String(item.innerText || item.getAttribute("aria-label") || "").replace(/\s+/g, " ").trim(),
+      lines: String(item.innerText || "").split("\n").map(value => value.trim()).filter(Boolean),
+      ariaLabel: item.getAttribute("aria-label") || "",
       href: item.href
     })).filter(item => item.text || /classroom\.google\.com|myschoolapp\.com/i.test(item.href)).slice(0, 120)
   }));

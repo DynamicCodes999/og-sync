@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { extname, join } from "node:path";
+import { cloudConfigured, pushImport } from "./cloud-bridge.mjs";
 import { closeScraper, inspectScraper, openScraper, runScraper, scraperStatus } from "./scraper.mjs";
 
 const ROOT = new URL(".", import.meta.url).pathname;
@@ -12,6 +13,8 @@ const BASE = new URL(BASE_URL);
 const IS_LOCAL = ["localhost", "127.0.0.1", "[::1]"].includes(BASE.hostname);
 const STATIC_FILES = new Set(["index.html", "styles.css", "app.js", "sync.js", "icon.svg", "manifest.webmanifest", "sw.js"]);
 const MIME = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml", ".webmanifest": "application/manifest+json" };
+const AUTO_SYNC_MINUTES = Number(process.env.DAYMARK_AUTO_SYNC_MINUTES || 15);
+const cloudActivity = { configured: cloudConfigured(), running: false, lastAttemptAt: "", lastSuccessAt: "", lastError: "" };
 
 if (!IS_LOCAL && BASE.protocol !== "https:") throw new Error("BASE_URL must use HTTPS outside localhost");
 if (!IS_LOCAL && !process.env.DAYMARK_PASSWORD) throw new Error("DAYMARK_PASSWORD is required outside localhost");
@@ -69,11 +72,41 @@ async function serveStatic(res, pathname) {
   return true;
 }
 
+async function scrapeAndPush(provider, options) {
+  const payload = await runScraper(provider, options);
+  try {
+    const cloud = await pushImport(payload);
+    return { ...payload, cloud };
+  } catch (error) {
+    return { ...payload, cloud: { configured: true, error: error.message } };
+  }
+}
+
+async function runBackgroundSync() {
+  if (!cloudActivity.configured || cloudActivity.running) return;
+  cloudActivity.running = true;
+  cloudActivity.lastAttemptAt = new Date().toISOString();
+  cloudActivity.lastError = "";
+  try {
+    for (const provider of ["google", "blackbaud"]) {
+      await openScraper(provider, { foreground: false });
+      const result = await scrapeAndPush(provider, { foreground: false });
+      if (result.cloud?.error) throw new Error(`${provider}: ${result.cloud.error}`);
+    }
+    cloudActivity.lastSuccessAt = new Date().toISOString();
+  } catch (error) {
+    cloudActivity.lastError = error.message;
+    console.error("Daymark background sync:", error.message);
+  } finally {
+    cloudActivity.running = false;
+  }
+}
+
 async function handle(req, res) {
   const url = new URL(req.url, BASE_URL);
   if (!authorized(req)) return askForAuthorization(res);
   if (req.method === "GET" && await serveStatic(res, url.pathname)) return;
-  if (req.method === "GET" && url.pathname === "/api/status") return sendJson(res, 200, { scraper: scraperStatus() });
+  if (req.method === "GET" && url.pathname === "/api/status") return sendJson(res, 200, { scraper: scraperStatus(), cloud: cloudActivity });
   const inspectProvider = url.pathname.match(/^\/api\/scrape\/inspect\/(google|blackbaud)$/)?.[1];
   if (req.method === "GET" && inspectProvider) {
     try { return sendJson(res, 200, await inspectScraper(inspectProvider)); }
@@ -87,7 +120,7 @@ async function handle(req, res) {
   }
   const syncProvider = url.pathname.match(/^\/api\/sync\/(google|blackbaud)$/)?.[1];
   if (req.method === "POST" && syncProvider) {
-    try { return sendJson(res, 200, await runScraper(syncProvider)); }
+    try { return sendJson(res, 200, await scrapeAndPush(syncProvider)); }
     catch (error) { return sendJson(res, 502, { error: error.message }); }
   }
   sendJson(res, 404, { error: "Not found" });
@@ -99,7 +132,14 @@ const server = createServer((req, res) => handle(req, res).catch(error => {
   else res.end();
 }));
 
-server.listen(PORT, HOST, () => console.log(`Daymark running at ${BASE_URL}`));
+server.listen(PORT, HOST, () => {
+  console.log(`Daymark running at ${BASE_URL}`);
+  if (cloudActivity.configured && Number.isFinite(AUTO_SYNC_MINUTES) && AUTO_SYNC_MINUTES >= 5) {
+    setTimeout(runBackgroundSync, 5_000).unref();
+    setInterval(runBackgroundSync, AUTO_SYNC_MINUTES * 60_000).unref();
+    console.log(`Cloud bridge enabled; syncing every ${AUTO_SYNC_MINUTES} minutes.`);
+  }
+});
 for (const signal of ["SIGINT", "SIGTERM"]) process.once(signal, async () => {
   await closeScraper();
   server.close(() => process.exit(0));
