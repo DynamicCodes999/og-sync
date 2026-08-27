@@ -1,0 +1,11 @@
+{
+  "name": "daymark",
+  "private": true,
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server.mjs",
+    "test": "node --test test-sync.js test-scraper.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.62.1"
+  }
+}

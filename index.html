@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f8f8f5" />
+    <meta name="description" content="A calm, local-first school planner." />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./styles.css?v=6" />
+    <title>Daymark — School planner</title>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Primary navigation">
+        <a class="brand" href="#dashboard" aria-label="Daymark dashboard">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M7 3.8h8.2A3.8 3.8 0 0 1 19 7.6V20l-7-3.5L5 20V5.8A2 2 0 0 1 7 3.8Z"/><path d="m9 9 2 2 4-4"/></svg>
+          </span>
+          <span>Daymark<small>School, sorted.</small></span>
+        </a>
+
+        <nav class="nav-list">
+          <a class="nav-item active" data-page="dashboard" href="#dashboard">
+            <svg viewBox="0 0 24 24"><path d="M4 13h6V4H4v9Zm0 7h6v-4H4v4Zm10 0h6v-9h-6v9Zm0-16v4h6V4h-6Z"/></svg><span>Today</span>
+          </a>
+          <a class="nav-item" data-page="calendar" href="#calendar">
+            <svg viewBox="0 0 24 24"><path d="M6 3v3m12-3v3M4 9h16M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z"/></svg><span>Calendar</span>
+          </a>
+          <a class="nav-item" data-page="planner" href="#planner">
+            <svg viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4 6.1l.9.9L7 4.9M4 12.1l.9.9L7 10.9M4 18.1l.9.9L7 16.9"/></svg><span>Planner</span><span class="nav-count" id="planner-count">0</span>
+          </a>
+          <a class="nav-item" data-page="focus" href="#focus">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5M9 2h6"/></svg><span>Focus</span>
+          </a>
+          <a class="nav-item" data-page="classes" href="#classes">
+            <svg viewBox="0 0 24 24"><path d="m3 7 9-4 9 4-9 4-9-4Zm3 3v6c3 2.5 9 2.5 12 0v-6M21 8v7"/></svg><span>Classes</span>
+          </a>
+        </nav>
+
+        <div class="sidebar-bottom">
+          <a class="nav-item" data-page="sync" href="#sync">
+            <svg viewBox="0 0 24 24"><path d="M20 7h-5V2M4 17h5v5M19 12a7 7 0 0 0-12-5l-2 2m0 3a7 7 0 0 0 12 5l2-2"/></svg><span>Sync & import</span>
+          </a>
+          <button class="profile-button" id="profile-button" type="button">
+            <span class="avatar">S</span><span><strong>Student</strong><small>Local workspace</small></span>
+            <svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
+          </button>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div class="mobile-brand"><span class="brand-mark"><svg viewBox="0 0 24 24"><path d="M7 3.8h8.2A3.8 3.8 0 0 1 19 7.6V20l-7-3.5L5 20V5.8A2 2 0 0 1 7 3.8Z"/><path d="m9 9 2 2 4-4"/></svg></span><strong>Daymark</strong></div>
+          <span class="topbar-date" id="topbar-date"></span>
+          <div class="topbar-actions">
+            <button class="icon-button" id="search-button" type="button" aria-label="Search tasks">
+              <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+            </button>
+            <button class="button button-dark" data-open-task type="button"><span>+</span> Add task</button>
+          </div>
+        </header>
+
+        <div id="app-content" tabindex="-1"></div>
+      </main>
+    </div>
+
+    <dialog class="modal" id="task-modal">
+      <form method="dialog" id="task-form">
+        <div class="modal-header"><div><span class="eyebrow">New item</span><h2>Add to your plan</h2></div><button class="icon-button" value="cancel" aria-label="Close" type="submit">×</button></div>
+        <label>What needs doing?<input id="task-title" name="title" placeholder="e.g. Finish lab questions" required maxlength="100" autocomplete="off" /></label>
+        <div class="form-grid">
+          <label>Class<select id="task-course" name="course"></select></label>
+          <label>Type<select name="type"><option>Assignment</option><option>Test</option><option>Quiz</option><option>Project</option><option>Reading</option><option>Personal</option></select></label>
+          <label>Due date<input id="task-date" name="date" type="date" required /></label>
+          <label>Time<input name="time" type="time" value="23:59" /></label>
+          <label>Estimate<select name="estimate"><option value="15">15 min</option><option value="25" selected>25 min</option><option value="45">45 min</option><option value="60">1 hour</option><option value="90">1.5 hours</option></select></label>
+          <label>Priority<select name="priority"><option value="normal">Normal</option><option value="high">High</option><option value="low">Low</option></select></label>
+        </div>
+        <div class="modal-actions"><button class="button button-quiet" value="cancel" type="submit">Cancel</button><button class="button button-dark" value="default" type="submit">Add task</button></div>
+      </form>
+    </dialog>
+
+    <dialog class="modal modal-small" id="profile-modal">
+      <form method="dialog" id="profile-form">
+        <div class="modal-header"><div><span class="eyebrow">Your workspace</span><h2>Personalize Daymark</h2></div><button class="icon-button" value="cancel" aria-label="Close" type="submit">×</button></div>
+        <label>Your first name<input id="profile-name" name="name" required maxlength="30" autocomplete="given-name" /></label>
+        <div class="modal-actions"><button class="button button-quiet" value="cancel" type="submit">Cancel</button><button class="button button-dark" value="default" type="submit">Save</button></div>
+      </form>
+    </dialog>
+
+    <dialog class="modal" id="class-modal">
+      <form method="dialog" id="class-form">
+        <input id="class-id" name="id" type="hidden" />
+        <div class="modal-header"><div><span class="eyebrow">Class details</span><h2 id="class-modal-title">Add a class</h2></div><button class="icon-button" value="cancel" aria-label="Close" type="submit">×</button></div>
+        <label>Class name<input id="class-name" name="name" placeholder="e.g. Algebra 2" required maxlength="80" autocomplete="off" /></label>
+        <div class="form-grid">
+          <label>Teacher <span class="optional">Optional</span><input id="class-teacher" name="teacher" maxlength="80" autocomplete="off" /></label>
+          <label>Room <span class="optional">Optional</span><input id="class-room" name="room" maxlength="40" autocomplete="off" /></label>
+          <label>Start time <span class="optional">Optional</span><input id="class-start" name="start" type="time" /></label>
+          <label>End time <span class="optional">Optional</span><input id="class-end" name="end" type="time" /></label>
+          <label>Color<input id="class-color" name="color" type="color" value="#d9f16f" /></label>
+        </div>
+        <fieldset class="day-picker"><legend>Meeting days <span class="optional">Optional</span></legend><div>
+          <label><input type="checkbox" name="days" value="0" /><span>Sun</span></label>
+          <label><input type="checkbox" name="days" value="1" /><span>Mon</span></label>
+          <label><input type="checkbox" name="days" value="2" /><span>Tue</span></label>
+          <label><input type="checkbox" name="days" value="3" /><span>Wed</span></label>
+          <label><input type="checkbox" name="days" value="4" /><span>Thu</span></label>
+          <label><input type="checkbox" name="days" value="5" /><span>Fri</span></label>
+          <label><input type="checkbox" name="days" value="6" /><span>Sat</span></label>
+        </div></fieldset>
+        <p class="form-note">Choose days and a time to show this class in “Next class.” You can leave them blank until you know your schedule.</p>
+        <div class="modal-actions"><button class="button button-quiet" value="cancel" type="submit">Cancel</button><button class="button button-dark" value="default" type="submit">Save class</button></div>
+      </form>
+    </dialog>
+
+    <dialog class="modal modal-small" id="search-modal">
+      <form method="dialog" id="search-form">
+        <div class="search-input-wrap"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input id="global-search" placeholder="Search tasks and classes…" autocomplete="off" /><kbd>esc</kbd></div>
+        <div class="search-results" id="search-results"></div>
+      </form>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <input id="import-input" type="file" accept="application/json,.json" hidden />
+    <script src="./sync.js?v=6"></script>
+    <script src="./app.js?v=6"></script>
+  </body>
+</html>
