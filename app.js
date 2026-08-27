@@ -38,15 +38,27 @@ function defaultState() {
     ],
     tasks: [],
     sessions: [],
+    gradeItems: [],
+    gradeGoals: {},
+    schoolSchedule: { rotationLabels: ["A", "B"], anchorDate: "" },
     sync: {},
-    tombstones: { tasks: {}, courses: {}, sessions: {}, sources: {} }
+    tombstones: { tasks: {}, courses: {}, sessions: {}, grades: {}, sources: {} }
   };
 }
 
 function ensureTombstones(target) {
   target.sync ||= {};
+  target.gradeItems ||= [];
+  target.gradeGoals ||= {};
+  target.schoolSchedule ||= { rotationLabels: ["A", "B"], anchorDate: "" };
   target.tombstones ||= {};
-  for (const key of ["tasks", "courses", "sessions", "sources"]) target.tombstones[key] ||= {};
+  for (const key of ["tasks", "courses", "sessions", "grades", "sources"]) target.tombstones[key] ||= {};
+  for (const task of target.tasks || []) {
+    task.notes ||= "";
+    task.teacherInstructions ||= task.description || "";
+    task.subtasks ||= [];
+    task.attachments ||= [];
+  }
   return target;
 }
 
@@ -72,14 +84,18 @@ function validState(data) {
   const text = (value, max) => typeof value === "string" && value.length <= max;
   const date = value => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(parseDate(value).getTime());
   const time = value => typeof value === "string" && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
+  const optionalText = (value, max) => value === undefined || text(value, max);
   const sources = value => value === undefined || (Array.isArray(value) && value.length <= 10 && value.every(source => source && /^[a-z0-9-]{1,30}$/.test(source.provider) && text(source.id, 200)));
   if (!data || !text(data.profile?.name, 30) || !Array.isArray(data.courses) || data.courses.length > 30 || !Array.isArray(data.tasks) || data.tasks.length > 5000 || !Array.isArray(data.sessions) || data.sessions.length > 5000) return false;
-  if (!data.courses.every(course => id(course.id) && text(course.name, 80) && text(course.teacher, 80) && text(course.room, 40) && /^#[0-9a-f]{6}$/i.test(course.color) && sources(course.sources) && Array.isArray(course.schedule) && course.schedule.length <= 20 && course.schedule.every(slot => Number.isInteger(slot.day) && slot.day >= 0 && slot.day <= 6 && time(slot.start) && time(slot.end)))) return false;
+  if (!data.courses.every(course => id(course.id) && text(course.name, 80) && text(course.teacher, 80) && text(course.room, 40) && /^#[0-9a-f]{6}$/i.test(course.color) && sources(course.sources) && Array.isArray(course.schedule) && course.schedule.length <= 20 && course.schedule.every(slot => Number.isInteger(slot.day) && slot.day >= 0 && slot.day <= 6 && time(slot.start) && time(slot.end) && optionalText(slot.period, 20) && optionalText(slot.rotation, 10)))) return false;
   const courseIds = new Set(data.courses.map(course => course.id));
-  if (!data.tasks.every(task => id(task.id) && text(task.title, 100) && (courseIds.has(task.courseId) || task.courseId === "personal") && (task.due === "" || date(task.due)) && time(task.time) && text(task.type, 30) && Number.isFinite(task.estimate) && task.estimate >= 0 && task.estimate <= 1440 && ["low", "normal", "high"].includes(task.priority) && typeof task.completed === "boolean" && sources(task.sources) && (task.url === undefined || task.url === "" || (text(task.url, 2000) && /^https:\/\//.test(task.url))) && (task.description === undefined || text(task.description, 5000)))) return false;
+  if (!data.tasks.every(task => id(task.id) && text(task.title, 100) && (courseIds.has(task.courseId) || task.courseId === "personal") && (task.due === "" || date(task.due)) && time(task.time) && text(task.type, 30) && Number.isFinite(task.estimate) && task.estimate >= 0 && task.estimate <= 1440 && ["low", "normal", "high"].includes(task.priority) && typeof task.completed === "boolean" && sources(task.sources) && (task.url === undefined || task.url === "" || (text(task.url, 2000) && /^https:\/\//.test(task.url))) && optionalText(task.description, 5000) && optionalText(task.notes, 5000) && optionalText(task.teacherInstructions, 10000) && (task.subtasks === undefined || (Array.isArray(task.subtasks) && task.subtasks.length <= 100 && task.subtasks.every(item => id(item.id) && text(item.title, 120) && typeof item.completed === "boolean"))) && (task.attachments === undefined || (Array.isArray(task.attachments) && task.attachments.length <= 20 && task.attachments.every(item => id(item.id) && text(item.name, 120) && text(item.url, 2000) && /^https:\/\//.test(item.url)))))) return false;
   if (!data.sessions.every(session => id(session.id) && date(session.date) && Number.isFinite(session.minutes) && session.minutes >= 0 && session.minutes <= 1440 && text(session.label, 100))) return false;
+  if (data.gradeItems !== undefined && (!Array.isArray(data.gradeItems) || data.gradeItems.length > 1000 || !data.gradeItems.every(item => id(item.id) && courseIds.has(item.courseId) && text(item.title, 100) && Number.isFinite(item.score) && item.score >= 0 && item.score <= 100000 && Number.isFinite(item.pointsPossible) && item.pointsPossible > 0 && item.pointsPossible <= 100000 && (item.date === "" || date(item.date))))) return false;
+  if (data.gradeGoals !== undefined && (!data.gradeGoals || typeof data.gradeGoals !== "object" || Array.isArray(data.gradeGoals) || Object.keys(data.gradeGoals).length > 30 || !Object.entries(data.gradeGoals).every(([courseId, goal]) => courseIds.has(courseId) && Number.isFinite(goal) && goal >= 0 && goal <= 100))) return false;
+  if (data.schoolSchedule !== undefined && (!data.schoolSchedule || !Array.isArray(data.schoolSchedule.rotationLabels) || data.schoolSchedule.rotationLabels.length !== 2 || !data.schoolSchedule.rotationLabels.every(label => text(label, 10) && label.trim()) || !(data.schoolSchedule.anchorDate === "" || date(data.schoolSchedule.anchorDate)))) return false;
   const validMap = value => value === undefined || (value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length <= 5000 && Object.entries(value).every(([key, stamp]) => key.length <= 300 && Number.isFinite(Date.parse(stamp))));
-  return data.tombstones === undefined || (data.tombstones && ["tasks", "courses", "sessions", "sources"].every(key => validMap(data.tombstones[key])));
+  return data.tombstones === undefined || (data.tombstones && ["tasks", "courses", "sessions", "grades", "sources"].every(key => validMap(data.tombstones[key])));
 }
 
 let state = loadState();
@@ -95,7 +111,11 @@ const taskModal = document.querySelector("#task-modal");
 const searchModal = document.querySelector("#search-modal");
 const profileModal = document.querySelector("#profile-modal");
 const classModal = document.querySelector("#class-modal");
+const taskDetailModal = document.querySelector("#task-detail-modal");
+const scheduleModal = document.querySelector("#schedule-modal");
+const gradeModal = document.querySelector("#grade-modal");
 const cloudModal = document.querySelector("#cloud-modal");
+let detailDraft;
 const cloud = {
   key: HOSTED ? localStorage.getItem(CLOUD_KEY_STORE) || "" : "",
   revision: null,
@@ -197,7 +217,8 @@ function applyTombstones(target) {
   const deleted = target.tombstones;
   target.tasks = target.tasks.filter(task => !deleted.tasks[task.id] && !(task.sources || []).some(source => deleted.sources[window.DaymarkSync.sourceKey(source.provider, source.id)]));
   target.sessions = target.sessions.filter(session => !deleted.sessions[session.id]);
-  const usedCourses = new Set(target.tasks.map(task => task.courseId));
+  target.gradeItems = target.gradeItems.filter(item => !deleted.grades[item.id]);
+  const usedCourses = new Set([...target.tasks.map(task => task.courseId), ...target.gradeItems.map(item => item.courseId)]);
   target.courses = target.courses.filter(course => !deleted.courses[course.id] || usedCourses.has(course.id));
   return target;
 }
@@ -216,10 +237,13 @@ function mergeCloudConflict(remoteInput, localInput) {
     courses: mergeById(remote.courses, local.courses),
     tasks: mergeById(remote.tasks, local.tasks),
     sessions: mergeById(remote.sessions, local.sessions),
+    gradeItems: mergeById(remote.gradeItems, local.gradeItems),
+    gradeGoals: { ...remote.gradeGoals, ...local.gradeGoals },
+    schoolSchedule: structuredClone(local.schoolSchedule),
     sync,
     tombstones: {}
   };
-  for (const key of ["tasks", "courses", "sessions", "sources"]) merged.tombstones[key] = newestTombstones(remote.tombstones[key], local.tombstones[key]);
+  for (const key of ["tasks", "courses", "sessions", "grades", "sources"]) merged.tombstones[key] = newestTombstones(remote.tombstones[key], local.tombstones[key]);
   return applyTombstones(merged);
 }
 
@@ -311,12 +335,32 @@ function taskRows(tasks, actions = false) {
   return `<div class="task-list">${tasks.map(task => {
     const course = courseFor(task.courseId);
     const overdue = !task.completed && dueTimestamp(task) < Date.now() && task.due !== dateKey();
+    const steps = task.subtasks || [];
+    const stepText = steps.length ? ` · ${steps.filter(item => item.completed).length}/${steps.length} steps` : "";
     return `<div class="task-row ${task.completed ? "done" : ""}">
       <input class="task-check" type="checkbox" data-toggle-task="${task.id}" ${task.completed ? "checked" : ""} aria-label="Mark ${e(task.title)} complete" />
-      <div><p class="task-title">${task.url ? `<a href="${e(task.url)}" target="_blank" rel="noreferrer">${e(task.title)} ↗</a>` : e(task.title)}</p><div class="task-meta"><span class="course-dot" style="--course-color:${course.color}"></span>${e(course.name)} · ${e(task.type)} · ${task.estimate || 25} min</div></div>
+      <div><p class="task-title"><button class="task-title-button" data-task-detail="${task.id}">${e(task.title)}</button>${task.url ? `<a class="source-arrow" href="${e(task.url)}" target="_blank" rel="noreferrer" aria-label="Open ${e(task.title)} on the school site">↗</a>` : ""}</p><div class="task-meta"><span class="course-dot" style="--course-color:${course.color}"></span>${e(course.name)} · ${e(task.type)} · ${task.estimate || 25} min${stepText}</div></div>
       <div style="display:flex;align-items:center"><div class="task-due ${overdue ? "overdue" : ""}"><strong>${overdue ? "Overdue" : relativeDate(task.due)}</strong><span>${formatTime(task.time)}</span></div>${actions ? `<div class="task-actions"><button class="mini-action" data-delete-task="${task.id}" aria-label="Delete ${e(task.title)}">${icons.trash}</button></div>` : ""}</div>
     </div>`;
   }).join("")}</div>`;
+}
+
+function rotationForDate(key) {
+  return window.DaymarkSchool.rotationForDate(state.schoolSchedule, key);
+}
+
+function slotMatchesDate(slot, date) {
+  if (slot.day !== date.getDay()) return false;
+  const rotation = rotationForDate(dateKey(date));
+  return !slot.rotation || !rotation || slot.rotation === rotation;
+}
+
+function scheduleForDate(date = new Date()) {
+  const items = [];
+  for (const course of state.courses) {
+    for (const slot of course.schedule || []) if (slotMatchesDate(slot, date)) items.push({ course, slot });
+  }
+  return items.sort((a, b) => a.slot.start.localeCompare(b.slot.start));
 }
 
 function nextClass() {
@@ -326,7 +370,7 @@ function nextClass() {
     const dayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset);
     for (const course of state.courses) {
       for (const slot of course.schedule || []) {
-        if (slot.day !== dayDate.getDay()) continue;
+        if (!slotMatchesDate(slot, dayDate)) continue;
         const [hour, minute] = slot.start.split(":").map(Number);
         const starts = new Date(dayDate.getFullYear(), dayDate.getMonth(), dayDate.getDate(), hour, minute);
         if (starts > now) candidates.push({ course, slot, starts, offset });
@@ -368,7 +412,7 @@ function renderDashboard() {
     <div class="dashboard-grid">
       <article class="card"><div class="card-header"><div><h2>Today’s plan</h2><p>Due and overdue work, ordered by urgency</p></div><button class="text-link" data-go="planner">Open planner →</button></div>${taskRows(todayTasks)}</article>
       <div class="dashboard-stack">
-        ${next ? `<article class="card next-card"><div class="next-card-top" style="--class-bg:${next.course.color}"><span class="eyebrow">Next class</span><h3>${e(next.course.name)}</h3><p>${e(next.course.teacher)} · ${e(next.course.room)}</p></div><div class="next-card-bottom"><div class="next-time"><strong>${next.offset === 0 ? "Today" : next.offset === 1 ? "Tomorrow" : next.starts.toLocaleDateString(undefined, { weekday: "long" })}, ${formatTime(next.slot.start)}</strong><span>Ends ${formatTime(next.slot.end)}</span></div>${icons.arrow}</div></article>` : ""}
+        ${next ? `<article class="card next-card"><div class="next-card-top" style="--class-bg:${next.course.color}"><span class="eyebrow">Next class${next.slot.rotation ? ` · ${e(next.slot.rotation)}` : ""}</span><h3>${e(next.course.name)}</h3><p>${e([next.slot.period, next.course.teacher, next.course.room].filter(Boolean).join(" · ") || "Schedule details")}</p></div><div class="next-card-bottom"><div class="next-time"><strong>${next.offset === 0 ? "Today" : next.offset === 1 ? "Tomorrow" : next.starts.toLocaleDateString(undefined, { weekday: "long" })}, ${formatTime(next.slot.start)}</strong><span>Ends ${formatTime(next.slot.end)}</span></div>${icons.arrow}</div></article>` : ""}
         <article class="card week-stats"><h3>Focus this week</h3><div class="week-bars">${week.map(day => `<div class="day-bar ${day.today ? "today" : ""}"><div class="bar-track" title="${day.minutes} minutes"><span class="bar-fill" style="height:${Math.max(6, day.minutes / maxMinutes * 100)}%"></span></div><span>${day.label}</span></div>`).join("")}</div></article>
       </div>
     </div>
@@ -475,19 +519,50 @@ function renderFocus() {
 function scheduleText(course) {
   const days = [...new Set((course.schedule || []).map(slot => slot.day))];
   const labels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  if (days.length === 5 && days.every(day => day >= 1 && day <= 5)) return "Weekdays";
-  return days.map(day => labels[day]).join(", ") || "No schedule";
+  const dayText = days.length === 5 && days.every(day => day >= 1 && day <= 5) ? "Weekdays" : days.map(day => labels[day]).join(", ");
+  const rotations = [...new Set((course.schedule || []).map(slot => slot.rotation).filter(Boolean))];
+  return `${dayText}${rotations.length ? ` · ${rotations.join("/")}` : ""}` || "No schedule";
 }
 
 function renderClasses() {
+  const today = new Date();
+  const rotation = rotationForDate(dateKey(today));
+  const todayItems = scheduleForDate(today);
   app.innerHTML = `<section class="page">
-    <div class="page-heading"><div><span class="eyebrow">Your school day</span><h1>Classes</h1><p>Add the details you know now; change them whenever your schedule changes.</p></div><button class="button button-dark" data-add-class>+ Add class</button></div>
+    <div class="page-heading"><div><span class="eyebrow">Your school day</span><h1>Classes & schedule</h1><p>See today’s order, rooms, periods, and rotating-day classes.</p></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="button button-quiet" data-configure-schedule>Configure A/B cycle</button><button class="button button-dark" data-add-class>+ Add class</button></div></div>
+    <article class="card school-day-card"><div class="school-day-heading"><div><span class="eyebrow">${today.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}</span><h2>Today’s schedule</h2></div>${rotation ? `<span class="rotation-badge">${e(rotation)} day</span>` : '<span class="status-pill">No rotation set</span>'}</div>
+      ${todayItems.length ? `<div class="schedule-timeline">${todayItems.map(({ course, slot }) => `<div class="schedule-row"><span class="schedule-time">${formatTime(slot.start)}</span><span class="schedule-line" style="--schedule-color:${course.color}"></span><div><strong>${e(course.name)}</strong><span>${e([slot.period, course.room, course.teacher].filter(Boolean).join(" · ") || `Ends ${formatTime(slot.end)}`)}</span></div><small>${formatTime(slot.end)}</small></div>`).join("")}</div>` : '<div class="empty-state"><h3>No classes scheduled today</h3><p>Edit each class to add meeting days, times, room, period, and rotation.</p></div>'}
+    </article>
     ${state.courses.length ? `<div class="classes-grid">${state.courses.map(course => {
       const tasks = sortTasks(state.tasks.filter(task => task.courseId === course.id && !task.completed));
       const slot = course.schedule?.[0];
       const details = [course.teacher, course.room].filter(Boolean).map(e).join(" · ");
-      return `<article class="card class-card"><div class="class-color" style="--class-bg:${course.color}"><span class="eyebrow">${tasks.length} open ${tasks.length === 1 ? "item" : "items"}</span><h2>${e(course.name)}</h2><p>${details || "No teacher or room added"}</p></div><div class="class-details"><div class="class-detail-row"><span>Schedule</span><strong>${scheduleText(course)}${slot ? ` · ${formatTime(slot.start)}` : ""}</strong></div><div class="class-detail-row"><span>Next due</span><strong>${tasks[0] ? `${relativeDate(tasks[0].due)} · ${e(tasks[0].title)}` : "All clear"}</strong></div><div style="display:flex;align-items:center;justify-content:space-between;margin-top:15px"><button class="text-link" data-course-work="${course.id}">View class work →</button><div style="display:flex"><button class="mini-action" data-edit-class="${course.id}" aria-label="Edit ${e(course.name)}">✎</button><button class="mini-action" data-delete-class="${course.id}" aria-label="Delete ${e(course.name)}">${icons.trash}</button></div></div></div></article>`;
+      return `<article class="card class-card"><div class="class-color" style="--class-bg:${course.color}"><span class="eyebrow">${tasks.length} open ${tasks.length === 1 ? "item" : "items"}</span><h2>${e(course.name)}</h2><p>${details || "No teacher or room added"}</p></div><div class="class-details"><div class="class-detail-row"><span>Schedule</span><strong>${scheduleText(course)}${slot ? ` · ${e(slot.period || formatTime(slot.start))}` : ""}</strong></div><div class="class-detail-row"><span>Next due</span><strong>${tasks[0] ? `${relativeDate(tasks[0].due)} · ${e(tasks[0].title)}` : "All clear"}</strong></div><div style="display:flex;align-items:center;justify-content:space-between;margin-top:15px"><button class="text-link" data-course-work="${course.id}">View class work →</button><div style="display:flex"><button class="mini-action" data-edit-class="${course.id}" aria-label="Edit ${e(course.name)}">✎</button><button class="mini-action" data-delete-class="${course.id}" aria-label="Delete ${e(course.name)}">${icons.trash}</button></div></div></div></article>`;
     }).join("")}</div>` : '<article class="card empty-state"><span class="empty-icon">＋</span><h3>Add your first class</h3><p>Your assignments and schedule will organize around it.</p><button class="button button-dark" data-add-class style="margin-top:16px">Add class</button></article>'}
+  </section>`;
+}
+
+function formatPoints(value) {
+  return Number.isInteger(value) ? String(value) : Number(value).toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+}
+
+function renderGrades() {
+  app.innerHTML = `<section class="page">
+    <div class="page-heading"><div><span class="eyebrow">Know where you stand</span><h1>Grade tracker</h1><p>Track earned points and calculate what you need on the next assignment or test.</p></div><button class="button button-dark" data-add-grade>+ Add graded item</button></div>
+    <aside class="card grade-note"><span class="integration-logo">%</span><div><h3>Points-based calculation</h3><p>Daymark uses total points earned ÷ total points possible. If a teacher weights categories, use the official gradebook as the final source.</p></div></aside>
+    <div class="grades-grid">${state.courses.map(course => {
+      const items = state.gradeItems.filter(item => item.courseId === course.id).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+      const summary = window.DaymarkSchool.gradeSummary(items);
+      const percent = summary.percent === null ? null : Math.round(summary.percent * 10) / 10;
+      const goal = state.gradeGoals[course.id];
+      return `<article class="card grade-card" style="--grade-color:${course.color}">
+        <div class="grade-card-head"><div><span class="eyebrow">${items.length} graded ${items.length === 1 ? "item" : "items"}</span><h2>${e(course.name)}</h2></div><strong class="grade-percent">${percent === null ? "—" : `${percent}%`}</strong></div>
+        <div class="grade-progress"><span style="width:${Math.max(0, Math.min(100, percent || 0))}%"></span></div>
+        <p class="grade-points">${summary.possible ? `${formatPoints(summary.earned)} of ${formatPoints(summary.possible)} points` : "Add graded work to calculate your current grade."}</p>
+        <div class="grade-items">${items.length ? items.slice(0, 5).map(item => `<div class="grade-item"><div><strong>${e(item.title)}</strong><span>${item.date ? relativeDate(item.date) : "No date"}</span></div><span>${formatPoints(item.score)} / ${formatPoints(item.pointsPossible)}</span><button class="mini-action" data-delete-grade="${item.id}" aria-label="Delete ${e(item.title)}">${icons.trash}</button></div>`).join("") : '<div class="grade-empty">No grades recorded yet.</div>'}</div>
+        <div class="needed-calculator"><h3>What do I need next?</h3><div><label>Target %<input data-grade-target="${course.id}" type="number" min="0" max="100" step="0.1" value="${Number.isFinite(goal) ? goal : ""}" /></label><label>Next item points<input data-grade-future="${course.id}" type="number" min="0.01" max="100000" step="0.01" /></label><button class="button button-quiet" data-calculate-grade="${course.id}">Calculate</button></div><p id="grade-result-${course.id}" aria-live="polite"></p></div>
+      </article>`;
+    }).join("")}</div>
   </section>`;
 }
 
@@ -666,7 +741,7 @@ async function autoSync() {
 
 function currentPage() {
   const value = location.hash.slice(1);
-  return ["dashboard", "calendar", "planner", "focus", "classes", "sync"].includes(value) ? value : "dashboard";
+  return ["dashboard", "calendar", "planner", "focus", "classes", "grades", "sync"].includes(value) ? value : "dashboard";
 }
 
 function render() {
@@ -676,7 +751,7 @@ function render() {
   document.querySelector(".profile-button strong").textContent = state.profile.name || "Your workspace";
   document.querySelector(".avatar").textContent = (state.profile.name || "S").trim()[0].toUpperCase();
   document.querySelector("#topbar-date").textContent = new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
-  ({ dashboard: renderDashboard, calendar: renderCalendar, planner: renderPlanner, focus: renderFocus, classes: renderClasses, sync: renderSync })[page]();
+  ({ dashboard: renderDashboard, calendar: renderCalendar, planner: renderPlanner, focus: renderFocus, classes: renderClasses, grades: renderGrades, sync: renderSync })[page]();
   app.focus({ preventScroll: true });
 }
 
@@ -744,12 +819,63 @@ function openTaskModal() {
   setTimeout(() => document.querySelector("#task-title").focus(), 50);
 }
 
+function renderDetailLists() {
+  document.querySelector("#subtask-list").innerHTML = detailDraft.subtasks.length ? detailDraft.subtasks.map(item => `<div class="detail-list-row"><input type="checkbox" data-detail-subtask="${item.id}" ${item.completed ? "checked" : ""} /><span class="${item.completed ? "done" : ""}">${e(item.title)}</span><button class="mini-action" type="button" data-remove-subtask="${item.id}" aria-label="Remove ${e(item.title)}">${icons.trash}</button></div>`).join("") : '<p class="detail-empty">No subtasks yet.</p>';
+  document.querySelector("#attachment-list").innerHTML = detailDraft.attachments.length ? detailDraft.attachments.map(item => `<div class="detail-list-row"><span class="attachment-mark">↗</span><a href="${e(item.url)}" target="_blank" rel="noreferrer">${e(item.name)}</a><button class="mini-action" type="button" data-remove-attachment="${item.id}" aria-label="Remove ${e(item.name)}">${icons.trash}</button></div>`).join("") : '<p class="detail-empty">No attachment links yet.</p>';
+}
+
+function openTaskDetails(id) {
+  const task = state.tasks.find(item => item.id === id);
+  if (!task) return;
+  detailDraft = {
+    id: task.id,
+    notes: task.notes || "",
+    teacherInstructions: task.teacherInstructions || task.description || "",
+    subtasks: structuredClone(task.subtasks || []),
+    attachments: structuredClone(task.attachments || [])
+  };
+  document.querySelector("#task-detail-id").value = task.id;
+  document.querySelector("#task-detail-title").textContent = task.title;
+  document.querySelector("#task-detail-course").textContent = `${courseFor(task.courseId).name} · ${task.type} · ${relativeDate(task.due)}`;
+  document.querySelector("#task-teacher-instructions").value = detailDraft.teacherInstructions;
+  document.querySelector("#task-notes").value = detailDraft.notes;
+  document.querySelector("#subtask-title").value = "";
+  document.querySelector("#attachment-name").value = "";
+  document.querySelector("#attachment-url").value = "";
+  const source = document.querySelector("#task-source-link");
+  source.classList.toggle("hidden", !task.url);
+  if (task.url) source.href = task.url;
+  renderDetailLists();
+  taskDetailModal.showModal();
+}
+
+function openScheduleModal() {
+  const [labelA, labelB] = state.schoolSchedule.rotationLabels;
+  document.querySelector("#rotation-label-a").value = labelA;
+  document.querySelector("#rotation-label-b").value = labelB;
+  document.querySelector("#rotation-anchor").value = state.schoolSchedule.anchorDate || dateKey();
+  scheduleModal.showModal();
+}
+
+function openGradeModal(courseId = "") {
+  const select = document.querySelector("#grade-course");
+  select.innerHTML = state.courses.map(course => `<option value="${course.id}">${e(course.name)}</option>`).join("");
+  document.querySelector("#grade-date").value = dateKey();
+  document.querySelector("#grade-form").reset();
+  document.querySelector("#grade-date").value = dateKey();
+  if (courseId) select.value = courseId;
+  gradeModal.showModal();
+  setTimeout(() => document.querySelector("#grade-title").focus(), 50);
+}
+
 function openClassModal(id = "") {
   const form = document.querySelector("#class-form");
   form.reset();
   document.querySelector("#class-id").value = id;
   document.querySelector("#class-modal-title").textContent = id ? "Edit class" : "Add a class";
   document.querySelector("#class-color").value = ["#ddd5f4", "#f2d6a2", "#d9e8c7", "#cae8d7", "#f3d6dc", "#cfe1f4"][state.courses.length % 6];
+  const rotation = document.querySelector("#class-rotation");
+  rotation.innerHTML = '<option value="">Every rotation day</option>' + state.schoolSchedule.rotationLabels.map(label => `<option value="${e(label)}">${e(label)} day only</option>`).join("");
   if (id) {
     const course = state.courses.find(item => item.id === id);
     if (!course) return;
@@ -759,6 +885,8 @@ function openClassModal(id = "") {
     document.querySelector("#class-color").value = course.color;
     document.querySelector("#class-start").value = course.schedule[0]?.start || "";
     document.querySelector("#class-end").value = course.schedule[0]?.end || "";
+    document.querySelector("#class-period").value = course.schedule[0]?.period || "";
+    rotation.value = course.schedule[0]?.rotation || "";
     const days = new Set(course.schedule.map(slot => String(slot.day)));
     form.querySelectorAll('input[name="days"]').forEach(input => { input.checked = days.has(input.value); });
   }
@@ -777,6 +905,9 @@ function renderSearch(query = "") {
 document.addEventListener("click", event => {
   const openTask = event.target.closest("[data-open-task]");
   if (openTask) return openTaskModal();
+
+  const taskDetail = event.target.closest("[data-task-detail]");
+  if (taskDetail) openTaskDetails(taskDetail.dataset.taskDetail);
 
   const go = event.target.closest("[data-go]");
   if (go) location.hash = go.dataset.go;
@@ -812,15 +943,67 @@ document.addEventListener("click", event => {
   if (courseWork) { plannerCourse = courseWork.dataset.courseWork; plannerView = "open"; location.hash = "planner"; }
 
   if (event.target.closest("[data-add-class]")) openClassModal();
+  if (event.target.closest("[data-configure-schedule]")) openScheduleModal();
   const editClass = event.target.closest("[data-edit-class]");
   if (editClass) openClassModal(editClass.dataset.editClass);
   const deleteClass = event.target.closest("[data-delete-class]");
   if (deleteClass) {
     const course = state.courses.find(item => item.id === deleteClass.dataset.deleteClass);
     const taskCount = state.tasks.filter(task => task.courseId === course?.id).length;
-    if (taskCount) showToast(`Move or delete ${taskCount} linked ${taskCount === 1 ? "task" : "tasks"} first.`);
-    else if (course && confirm(`Delete ${course.name}?`)) { tombstone("courses", course); state.courses = state.courses.filter(item => item.id !== course.id); save(); renderClasses(); showToast("Class deleted."); }
+    const gradeCount = state.gradeItems.filter(item => item.courseId === course?.id).length;
+    if (taskCount || gradeCount) showToast(`Remove the linked ${taskCount ? `${taskCount} ${taskCount === 1 ? "task" : "tasks"}` : ""}${taskCount && gradeCount ? " and " : ""}${gradeCount ? `${gradeCount} grade ${gradeCount === 1 ? "item" : "items"}` : ""} first.`);
+    else if (course && confirm(`Delete ${course.name}?`)) { tombstone("courses", course); state.courses = state.courses.filter(item => item.id !== course.id); delete state.gradeGoals[course.id]; save(); renderClasses(); showToast("Class deleted."); }
   }
+
+  if (event.target.closest("[data-add-grade]")) openGradeModal();
+  const deleteGrade = event.target.closest("[data-delete-grade]");
+  if (deleteGrade && confirm("Delete this graded item?")) {
+    const item = state.gradeItems.find(grade => grade.id === deleteGrade.dataset.deleteGrade);
+    if (item) tombstone("grades", item);
+    state.gradeItems = state.gradeItems.filter(grade => grade.id !== deleteGrade.dataset.deleteGrade);
+    save(); renderGrades(); showToast("Grade removed.");
+  }
+  const calculateGrade = event.target.closest("[data-calculate-grade]");
+  if (calculateGrade) {
+    const courseId = calculateGrade.dataset.calculateGrade;
+    const targetValue = document.querySelector(`[data-grade-target="${courseId}"]`).value;
+    const futureValue = document.querySelector(`[data-grade-future="${courseId}"]`).value;
+    const target = targetValue === "" ? Number.NaN : Number(targetValue);
+    const future = futureValue === "" ? Number.NaN : Number(futureValue);
+    const result = window.DaymarkSchool.scoreNeeded(state.gradeItems.filter(item => item.courseId === courseId), target, future);
+    const output = document.querySelector(`#grade-result-${courseId}`);
+    if (!result) output.textContent = "Enter a target from 0–100 and the next item’s point value.";
+    else {
+      state.gradeGoals[courseId] = target;
+      save();
+      output.textContent = result.points <= 0 ? "You are already at or above that target." : result.possible ? `You need ${formatPoints(result.points)} of ${formatPoints(future)} points (${Math.round(result.percent * 10) / 10}%).` : `One item cannot reach that target; it would require ${Math.round(result.percent * 10) / 10}%.`;
+    }
+  }
+
+  if (event.target.id === "add-subtask") {
+    const input = document.querySelector("#subtask-title");
+    const title = input.value.trim();
+    if (title && detailDraft.subtasks.length < 100) {
+      detailDraft.subtasks.push({ id: crypto.randomUUID(), title, completed: false });
+      input.value = ""; renderDetailLists(); input.focus();
+    }
+  }
+  const removeSubtask = event.target.closest("[data-remove-subtask]");
+  if (removeSubtask) { detailDraft.subtasks = detailDraft.subtasks.filter(item => item.id !== removeSubtask.dataset.removeSubtask); renderDetailLists(); }
+  if (event.target.id === "add-attachment") {
+    const nameInput = document.querySelector("#attachment-name");
+    const urlInput = document.querySelector("#attachment-url");
+    const name = nameInput.value.trim();
+    let url;
+    try { url = new URL(urlInput.value.trim()); } catch {}
+    if (!name || url?.protocol !== "https:") showToast("Add a name and a secure https:// link.");
+    else if (detailDraft.attachments.length < 20) {
+      detailDraft.attachments.push({ id: crypto.randomUUID(), name, url: url.href });
+      nameInput.value = ""; urlInput.value = ""; renderDetailLists();
+    }
+  }
+  const removeAttachment = event.target.closest("[data-remove-attachment]");
+  if (removeAttachment) { detailDraft.attachments = detailDraft.attachments.filter(item => item.id !== removeAttachment.dataset.removeAttachment); renderDetailLists(); }
 
   const timerMode = event.target.closest("[data-timer-mode]");
   if (timerMode) setTimerMode(timerMode.dataset.timerMode);
@@ -870,6 +1053,11 @@ document.addEventListener("change", event => {
     const task = state.tasks.find(item => item.id === toggle.dataset.toggleTask);
     if (task) { task.completed = toggle.checked; save(); render(); showToast(toggle.checked ? "Task completed." : "Task reopened."); }
   }
+  const subtask = event.target.closest("[data-detail-subtask]");
+  if (subtask && detailDraft) {
+    const item = detailDraft.subtasks.find(entry => entry.id === subtask.dataset.detailSubtask);
+    if (item) { item.completed = subtask.checked; renderDetailLists(); }
+  }
   if (event.target.id === "planner-course") { plannerCourse = event.target.value; renderPlanner(); }
 });
 
@@ -877,8 +1065,21 @@ document.querySelector("#task-form").addEventListener("submit", event => {
   event.preventDefault();
   if (event.submitter?.value === "cancel") return taskModal.close();
   const data = new FormData(event.currentTarget);
-  state.tasks.push({ id: crypto.randomUUID(), title: data.get("title").trim(), courseId: data.get("course"), due: data.get("date"), time: data.get("time") || "23:59", type: data.get("type"), estimate: Number(data.get("estimate")), priority: data.get("priority"), completed: false });
+  state.tasks.push({ id: crypto.randomUUID(), title: data.get("title").trim(), courseId: data.get("course"), due: data.get("date"), time: data.get("time") || "23:59", type: data.get("type"), estimate: Number(data.get("estimate")), priority: data.get("priority"), completed: false, notes: "", teacherInstructions: "", subtasks: [], attachments: [] });
   save(); event.currentTarget.reset(); taskModal.close(); render(); showToast("Task added to your plan.");
+});
+
+document.querySelector("#task-detail-form").addEventListener("submit", event => {
+  event.preventDefault();
+  if (event.submitter?.value === "cancel") return taskDetailModal.close();
+  const task = state.tasks.find(item => item.id === detailDraft?.id);
+  if (!task) return taskDetailModal.close();
+  const data = new FormData(event.currentTarget);
+  task.teacherInstructions = data.get("teacherInstructions").trim();
+  task.notes = data.get("notes").trim();
+  task.subtasks = detailDraft.subtasks;
+  task.attachments = detailDraft.attachments;
+  save(); taskDetailModal.close(); render(); showToast("Assignment details saved.");
 });
 
 document.querySelector("#profile-button").addEventListener("click", () => {
@@ -891,6 +1092,32 @@ document.querySelector("#profile-form").addEventListener("submit", event => {
   if (event.submitter?.value === "cancel") return profileModal.close();
   state.profile.name = new FormData(event.currentTarget).get("name").trim() || "Student";
   save(); profileModal.close(); render(); showToast("Workspace updated.");
+});
+
+document.querySelector("#schedule-form").addEventListener("submit", event => {
+  event.preventDefault();
+  if (event.submitter?.value === "cancel") return scheduleModal.close();
+  const data = new FormData(event.currentTarget);
+  const labels = [data.get("labelA").trim(), data.get("labelB").trim()];
+  if (!labels[0] || !labels[1] || labels[0].toLowerCase() === labels[1].toLowerCase()) return showToast("Use two different rotation names.");
+  const previous = state.schoolSchedule.rotationLabels;
+  for (const course of state.courses) for (const slot of course.schedule) {
+    const index = previous.indexOf(slot.rotation);
+    if (index >= 0) slot.rotation = labels[index];
+  }
+  state.schoolSchedule = { rotationLabels: labels, anchorDate: data.get("anchorDate") };
+  save(); scheduleModal.close(); renderClasses(); showToast("School rotation updated.");
+});
+
+document.querySelector("#grade-form").addEventListener("submit", event => {
+  event.preventDefault();
+  if (event.submitter?.value === "cancel") return gradeModal.close();
+  const data = new FormData(event.currentTarget);
+  const score = Number(data.get("score"));
+  const pointsPossible = Number(data.get("pointsPossible"));
+  if (!(score >= 0) || !(pointsPossible > 0)) return showToast("Enter valid earned and possible points.");
+  state.gradeItems.push({ id: crypto.randomUUID(), courseId: data.get("course"), title: data.get("title").trim(), score, pointsPossible, date: data.get("date") || "" });
+  save(); gradeModal.close(); renderGrades(); showToast("Grade added.");
 });
 
 document.querySelector("#cloud-form").addEventListener("submit", async event => {
@@ -926,7 +1153,7 @@ document.querySelector("#class-form").addEventListener("submit", event => {
   if (start && start >= end) return showToast("End time must be after start time.");
   const id = data.get("id") || `course-${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`;
   const existing = state.courses.findIndex(item => item.id === id);
-  const course = { id, name, teacher: data.get("teacher").trim(), room: data.get("room").trim(), color: data.get("color"), schedule: days.map(day => ({ day, start, end })), ...(existing >= 0 && state.courses[existing].sources ? { sources: state.courses[existing].sources } : {}) };
+  const course = { id, name, teacher: data.get("teacher").trim(), room: data.get("room").trim(), color: data.get("color"), schedule: days.map(day => ({ day, start, end, period: data.get("period").trim(), rotation: data.get("rotation") })), ...(existing >= 0 && state.courses[existing].sources ? { sources: state.courses[existing].sources } : {}) };
   if (existing >= 0) state.courses[existing] = course;
   else state.courses.push(course);
   save(); classModal.close(); renderClasses(); showToast(existing >= 0 ? "Class updated." : "Class added.");

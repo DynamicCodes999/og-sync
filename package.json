@@ -6,7 +6,7 @@
     "helper:install": "node mac-helper.mjs",
     "helper:uninstall": "node mac-helper.mjs --uninstall",
     "start": "node --env-file-if-exists=.env --env-file-if-exists=.env.local server.mjs",
-    "test": "node --test test-sync.js test-scraper.mjs test-cloud.mjs"
+    "test": "node --test test-sync.js test-scraper.mjs test-cloud.mjs test-school.js"
   },
   "dependencies": {
     "@vercel/blob": "^2.8.0",

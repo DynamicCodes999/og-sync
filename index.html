@@ -7,7 +7,7 @@
     <meta name="description" content="A calm, local-first school planner." />
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="icon" href="./icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="./styles.css?v=7" />
+    <link rel="stylesheet" href="./styles.css?v=8" />
     <title>Daymark — School planner</title>
   </head>
   <body>
@@ -35,6 +35,9 @@
           </a>
           <a class="nav-item" data-page="classes" href="#classes">
             <svg viewBox="0 0 24 24"><path d="m3 7 9-4 9 4-9 4-9-4Zm3 3v6c3 2.5 9 2.5 12 0v-6M21 8v7"/></svg><span>Classes</span>
+          </a>
+          <a class="nav-item" data-page="grades" href="#grades">
+            <svg viewBox="0 0 24 24"><path d="M5 20V10m7 10V4m7 16v-7M3 20h18"/></svg><span>Grades</span>
           </a>
         </nav>
 
@@ -99,6 +102,8 @@
           <label>Room <span class="optional">Optional</span><input id="class-room" name="room" maxlength="40" autocomplete="off" /></label>
           <label>Start time <span class="optional">Optional</span><input id="class-start" name="start" type="time" /></label>
           <label>End time <span class="optional">Optional</span><input id="class-end" name="end" type="time" /></label>
+          <label>Period/block <span class="optional">Optional</span><input id="class-period" name="period" maxlength="20" placeholder="e.g. Period 2" autocomplete="off" /></label>
+          <label>Rotation<select id="class-rotation" name="rotation"><option value="">Every rotation day</option></select></label>
           <label>Color<input id="class-color" name="color" type="color" value="#d9f16f" /></label>
         </div>
         <fieldset class="day-picker"><legend>Meeting days <span class="optional">Optional</span></legend><div>
@@ -112,6 +117,40 @@
         </div></fieldset>
         <p class="form-note">Choose days and a time to show this class in “Next class.” You can leave them blank until you know your schedule.</p>
         <div class="modal-actions"><button class="button button-quiet" value="cancel" type="submit">Cancel</button><button class="button button-dark" value="default" type="submit">Save class</button></div>
+      </form>
+    </dialog>
+
+    <dialog class="modal" id="task-detail-modal">
+      <form method="dialog" id="task-detail-form">
+        <input id="task-detail-id" name="id" type="hidden" />
+        <div class="modal-header"><div><span class="eyebrow" id="task-detail-course"></span><h2 id="task-detail-title">Assignment details</h2></div><button class="icon-button" value="cancel" aria-label="Close" type="submit">×</button></div>
+        <div class="detail-grid">
+          <label>Teacher instructions<textarea id="task-teacher-instructions" name="teacherInstructions" rows="5" maxlength="10000"></textarea></label>
+          <label>Your notes<textarea id="task-notes" name="notes" rows="5" maxlength="5000" placeholder="Key ideas, questions, or what to do next"></textarea></label>
+        </div>
+        <section class="detail-section"><div class="detail-section-title"><div><h3>Subtasks</h3><p>Break the assignment into finishable steps.</p></div></div><div class="inline-entry"><input id="subtask-title" maxlength="120" placeholder="Add a step" autocomplete="off" /><button class="button button-quiet" id="add-subtask" type="button">Add</button></div><div id="subtask-list" class="detail-list"></div></section>
+        <section class="detail-section"><div class="detail-section-title"><div><h3>Links & attachments</h3><p>Add Google Docs, PDFs, study guides, or other secure links.</p></div></div><div class="attachment-entry"><input id="attachment-name" maxlength="120" placeholder="Name" autocomplete="off" /><input id="attachment-url" type="url" maxlength="2000" placeholder="https://…" autocomplete="off" /><button class="button button-quiet" id="add-attachment" type="button">Add</button></div><div id="attachment-list" class="detail-list"></div></section>
+        <div class="modal-actions"><a class="button button-quiet hidden" id="task-source-link" target="_blank" rel="noreferrer">Open school page ↗</a><button class="button button-quiet" value="cancel" type="submit">Cancel</button><button class="button button-dark" value="save" type="submit">Save details</button></div>
+      </form>
+    </dialog>
+
+    <dialog class="modal modal-small" id="schedule-modal">
+      <form method="dialog" id="schedule-form">
+        <div class="modal-header"><div><span class="eyebrow">Rotation setup</span><h2>Configure your school cycle</h2></div><button class="icon-button" value="cancel" aria-label="Close" type="submit">×</button></div>
+        <p class="form-note cloud-note">Name the two rotation days and choose a date known to use the first one. Weekends are skipped automatically.</p>
+        <div class="form-grid"><label>First day name<input id="rotation-label-a" name="labelA" required maxlength="10" /></label><label>Second day name<input id="rotation-label-b" name="labelB" required maxlength="10" /></label></div>
+        <label style="margin-top:15px">Date using the first day<input id="rotation-anchor" name="anchorDate" type="date" required /></label>
+        <div class="modal-actions"><button class="button button-quiet" value="cancel" type="submit">Cancel</button><button class="button button-dark" value="save" type="submit">Save rotation</button></div>
+      </form>
+    </dialog>
+
+    <dialog class="modal modal-small" id="grade-modal">
+      <form method="dialog" id="grade-form">
+        <div class="modal-header"><div><span class="eyebrow">Grade tracker</span><h2>Add a graded item</h2></div><button class="icon-button" value="cancel" aria-label="Close" type="submit">×</button></div>
+        <label>Class<select id="grade-course" name="course"></select></label>
+        <label style="margin-top:15px">Assignment or test<input id="grade-title" name="title" required maxlength="100" autocomplete="off" /></label>
+        <div class="form-grid"><label>Points earned<input name="score" type="number" min="0" max="100000" step="0.01" required /></label><label>Points possible<input name="pointsPossible" type="number" min="0.01" max="100000" step="0.01" required /></label><label>Date <span class="optional">Optional</span><input id="grade-date" name="date" type="date" /></label></div>
+        <div class="modal-actions"><button class="button button-quiet" value="cancel" type="submit">Cancel</button><button class="button button-dark" value="save" type="submit">Add grade</button></div>
       </form>
     </dialog>
 
@@ -134,7 +173,8 @@
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <input id="import-input" type="file" accept="application/json,.json" hidden />
-    <script src="./sync.js?v=7"></script>
-    <script src="./app.js?v=7"></script>
+    <script src="./sync.js?v=8"></script>
+    <script src="./school.js?v=8"></script>
+    <script src="./app.js?v=8"></script>
   </body>
 </html>

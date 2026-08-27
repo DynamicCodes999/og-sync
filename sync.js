@@ -73,6 +73,7 @@
   function cleanAssignment(remote, course, provider, syncedAt) {
     const due = /^\d{4}-\d{2}-\d{2}$/.test(remote.due || "") ? remote.due : "";
     const time = /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(remote.time || "") ? remote.time : "23:59";
+    const teacherInstructions = String(remote.description || "").slice(0, 10000);
     return {
       title: String(remote.title || "Untitled assignment").trim().slice(0, 100),
       courseId: course.id,
@@ -83,7 +84,7 @@
       priority: /test|exam|project/i.test(remote.type || "") ? "high" : "normal",
       completed: Boolean(remote.completed),
       url: /^https:\/\//.test(remote.url || "") ? remote.url : "",
-      description: String(remote.description || "").slice(0, 5000),
+      ...(teacherInstructions ? { teacherInstructions } : {}),
       syncedAt
     };
   }

@@ -1,6 +1,12 @@
 # Daymark
 
-A private school planner with assignment tracking, editable classes, calendar and planner views, a Pomodoro timer, focus history, duplicate-safe Google Classroom and Blackbaud imports, cross-device cloud state, PWA support, and JSON backups.
+A private school planner with rich assignment details, rotating school-day schedules, a points-based grade tracker, calendar and planner views, a Pomodoro timer, focus history, duplicate-safe Google Classroom and Blackbaud imports, cross-device cloud state, PWA support, and JSON backups.
+
+## Planner features
+
+- Open an assignment title to save teacher instructions, personal notes, subtasks, and secure `https://` attachment links. Synced school-page links remain available beside the title.
+- Open **Classes → Configure A/B cycle** to name the two rotation days and choose a known first-day date. Edit each class to add its teacher, room, period, meeting days, times, and rotation. Weekends are skipped when the cycle is calculated.
+- Open **Grades** to record earned and possible points. Each class shows its running points percentage and a **What do I need next?** calculator. Weighted-category classes must still use the official school gradebook as the final result.
 
 ## Use Daymark at school
 
@@ -91,4 +97,4 @@ npm test
 npm run build
 ```
 
-The tests cover duplicate protection, provider ID stability, deleted-import behavior, conflicting device writes, current-class filtering, due-date parsing, and the future Band syllabus assignment.
+The tests cover duplicate protection, provider ID stability, deleted-import behavior, conflicting device writes, rich assignment and grade state, A/B rotation logic, grade calculations, current-class filtering, due-date parsing, and the future Band syllabus assignment.

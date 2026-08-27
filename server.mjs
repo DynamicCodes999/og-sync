@@ -11,7 +11,7 @@ const HOST = process.env.HOST || "127.0.0.1";
 const BASE_URL = (process.env.BASE_URL || `http://localhost:${PORT}`).replace(/\/$/, "");
 const BASE = new URL(BASE_URL);
 const IS_LOCAL = ["localhost", "127.0.0.1", "[::1]"].includes(BASE.hostname);
-const STATIC_FILES = new Set(["index.html", "styles.css", "app.js", "sync.js", "icon.svg", "manifest.webmanifest", "sw.js"]);
+const STATIC_FILES = new Set(["index.html", "styles.css", "app.js", "sync.js", "school.js", "icon.svg", "manifest.webmanifest", "sw.js"]);
 const MIME = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml", ".webmanifest": "application/manifest+json" };
 const AUTO_SYNC_MINUTES = Number(process.env.DAYMARK_AUTO_SYNC_MINUTES || 15);
 const cloudActivity = { configured: cloudConfigured(), running: false, lastAttemptAt: "", lastSuccessAt: "", lastError: "" };
