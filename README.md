@@ -4,7 +4,7 @@ A private school planner with assignment tracking, editable classes, calendar an
 
 ## Use Daymark at school
 
-Production: [https://daymark-gilt.vercel.app](https://daymark-gilt.vercel.app)
+Production: [https://daymark-dynamicdigital.vercel.app](https://daymark-dynamicdigital.vercel.app)
 
 On a new device:
 
