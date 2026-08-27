@@ -4,7 +4,7 @@ A private school planner with rich assignment details, rotating school-day sched
 
 ## Planner features
 
-- Open an assignment title to save teacher instructions, personal notes, subtasks, and secure `https://` attachment links. Synced school-page links remain available beside the title.
+- Open an assignment title to see teacher instructions, personal notes, subtasks, and secure `https://` attachment links. Google Classroom imports also collect descriptions and linked materials from the official assignment page; synced school-page links remain available beside the title.
 - Open **Classes → Configure A/B cycle** to name the two rotation days and choose a known first-day date. Edit each class to add its teacher, room, period, meeting days, times, and rotation. Weekends are skipped when the cycle is calculated.
 - Open **Grades** to record earned and possible points. Each class shows its running points percentage and a **What do I need next?** calculator. Weighted-category classes must still use the official school gradebook as the final result.
 

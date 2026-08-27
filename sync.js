@@ -74,6 +74,7 @@
     const due = /^\d{4}-\d{2}-\d{2}$/.test(remote.due || "") ? remote.due : "";
     const time = /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(remote.time || "") ? remote.time : "23:59";
     const teacherInstructions = String(remote.description || "").slice(0, 10000);
+    const attachments = Array.isArray(remote.attachments) ? remote.attachments.slice(0, 20).filter(item => item && /^[\w-]{1,64}$/.test(item.id || "") && String(item.name || "").length <= 120 && /^https:\/\//.test(item.url || "")).map(item => ({ id: item.id, name: String(item.name), url: item.url })) : [];
     return {
       title: String(remote.title || "Untitled assignment").trim().slice(0, 100),
       courseId: course.id,
@@ -85,6 +86,7 @@
       completed: Boolean(remote.completed),
       url: /^https:\/\//.test(remote.url || "") ? remote.url : "",
       ...(teacherInstructions ? { teacherInstructions } : {}),
+      ...(attachments.length ? { attachments } : {}),
       syncedAt
     };
   }
@@ -119,8 +121,16 @@
         matchedByContent = Boolean(task);
       }
       if (task) {
+        const attachments = next.attachments || [];
+        delete next.attachments;
         const wasCompleted = task.completed;
         Object.assign(task, next, { completed: wasCompleted || next.completed });
+        task.attachments ||= [];
+        for (const attachment of attachments) {
+          const existing = task.attachments.find(item => item.url === attachment.url);
+          if (existing) Object.assign(existing, attachment);
+          else if (task.attachments.length < 20) task.attachments.push(attachment);
+        }
         addSource(task, { provider, id: sourceId });
         counts[matchedByContent ? "merged" : "updated"]++;
       } else {

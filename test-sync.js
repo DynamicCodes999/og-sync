@@ -26,18 +26,22 @@ test("sync is idempotent and merges the same assignment across providers", () =>
     syncedAt: "2026-08-27T12:00:00Z",
     courses: [{ sourceId: "g-course", name: "Algebra II - Period 1" }],
     assignments: [
-      { sourceId: "g-course:g-work", courseSourceId: "g-course", courseName: "Algebra II - Period 1", title: "Chapter 4 Review!", due: "2026-09-01", time: "10:00", type: "Assignment" },
+      { sourceId: "g-course:g-work", courseSourceId: "g-course", courseName: "Algebra II - Period 1", title: "Chapter 4 Review!", due: "2026-09-01", time: "10:00", type: "Assignment", description: "Show every step.", attachments: [{ id: "google-guide", name: "Review guide", url: "https://docs.google.com/document/d/guide/edit" }] },
       { sourceId: "g-course:g-work", courseSourceId: "g-course", courseName: "Algebra II - Period 1", title: "Chapter 4 Review!", due: "2026-09-01", time: "10:00", type: "Assignment" }
     ]
   };
   mergeImported(state, google, ids);
   assert.equal(state.tasks.length, 1);
   assert.equal(state.courses.length, 1);
+  assert.equal(state.tasks[0].teacherInstructions, "Show every step.");
+  assert.deepEqual(state.tasks[0].attachments, [{ id: "google-guide", name: "Review guide", url: "https://docs.google.com/document/d/guide/edit" }]);
+  state.tasks[0].attachments.push({ id: "manual-notes", name: "My notes", url: "https://example.com/notes" });
   state.tasks[0].completed = true;
 
   mergeImported(state, google, ids);
   assert.equal(state.tasks.length, 1);
   assert.equal(state.tasks[0].completed, true);
+  assert.equal(state.tasks[0].attachments.length, 2);
 
   mergeImported(state, {
     provider: "blackbaud",

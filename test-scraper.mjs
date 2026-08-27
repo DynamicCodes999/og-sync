@@ -1,7 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
-import { blackbaudAssignments, visibleAssignments } from "./scraper.mjs";
+import { blackbaudAssignments, googleAssignmentDetails, signedIn, visibleAssignments } from "./scraper.mjs";
+
+test("Blackbaud redirect URLs are not mistaken for signed-in school pages", () => {
+  assert.equal(signedIn("blackbaud", { url: () => "https://app.blackbaud.com/signin/?redirectUrl=https%3A%2F%2Foakgrovelutheran.myschoolapp.com" }), false);
+  assert.equal(signedIn("blackbaud", { url: () => "https://oakgrovelutheran.myschoolapp.com/app/student" }), true);
+});
 
 test("scraper extracts real classes, dates, and stable IDs", async () => {
   const browser = await chromium.launch({ headless: true });
@@ -43,4 +48,22 @@ test("Blackbaud API parsing includes future Band work", () => {
   assert.deepEqual(items.map(({ sourceId, courseSourceId, course, title, due, time, completed }) => ({ sourceId, courseSourceId, course, title, due, time, completed })), [{
     sourceId: "17070595", courseSourceId: "90275949", course: "Band", title: "Syllabus", due: "2026-09-14", time: "11:20", completed: false
   }]);
+});
+
+test("Google detail parsing extracts teacher instructions and useful attachments", async () => {
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage();
+  try {
+    await page.setContent(`<base href="https://classroom.google.com"><main>
+      <h1>Cell Model</h1>
+      <div aria-label="Assignment instructions">Build a labeled model. Explain how each organelle helps the cell.</div>
+      <a href="https://docs.google.com/document/d/model-guide/edit">Cell model guide</a>
+      <a href="https://classroom.google.com/c/course/a/work/details">Cell Model</a>
+      <a href="https://accounts.google.com/SignOutOptions">Google Account</a>
+    </main>`);
+    const details = await googleAssignmentDetails(page, { title: "Cell Model", url: "https://classroom.google.com/c/course/a/work/details" });
+    assert.equal(details.description, "Build a labeled model. Explain how each organelle helps the cell.");
+    assert.deepEqual(details.attachments.map(({ name, url }) => ({ name, url })), [{ name: "Cell model guide", url: "https://docs.google.com/document/d/model-guide/edit" }]);
+    assert.match(details.attachments[0].id, /^google-[a-f0-9]{20}$/);
+  } finally { await browser.close(); }
 });

@@ -33,11 +33,13 @@ function livePage(provider) {
   return page && !page.isClosed() ? page : undefined;
 }
 
-function signedIn(provider, page) {
+export function signedIn(provider, page) {
   const url = page?.url() || "";
+  let hostname = "";
+  try { hostname = new URL(url).hostname; } catch {}
   return provider === "google"
-    ? /^https:\/\/classroom\.google\.com\//i.test(url)
-    : /oakgrovelutheran\.myschoolapp\.com/i.test(url) && !/#login(?:\/|$|\?)/i.test(url);
+    ? hostname === "classroom.google.com"
+    : hostname === "oakgrovelutheran.myschoolapp.com" && !/#login(?:\/|$|\?)/i.test(url);
 }
 
 export async function openScraper(provider, { foreground = true } = {}) {
@@ -189,6 +191,42 @@ export async function visibleAssignments(page, provider, completed = false) {
   }, { provider, completed });
 }
 
+export async function googleAssignmentDetails(page, item) {
+  const details = await page.evaluate(({ title, assignmentUrl }) => {
+    const clean = value => String(value || "").replace(/\s+/g, " ").trim();
+    const root = document.querySelector('main, [role="main"]') || document.body;
+    const candidates = [...root.querySelectorAll('p, div, [aria-label]')]
+      .filter(element => !element.closest('nav, aside, button, [role="button"]'))
+      .map(element => {
+        const text = clean(element.innerText);
+        const label = clean(element.getAttribute("aria-label"));
+        const whiteSpace = getComputedStyle(element).whiteSpace;
+        const score = (/instruction|description/i.test(label) ? 100 : 0) + (/pre-wrap|pre-line/.test(whiteSpace) ? 20 : 0) + (element.tagName === "P" ? 10 : 0);
+        return { text, score };
+      })
+      .filter(candidate => candidate.score >= 10 && candidate.text.length >= 2 && candidate.text.length <= 10_000 && candidate.text !== title && !/^(?:due|points?|class comments?|private comments?|your work|turn in|mark as done)\b/i.test(candidate.text))
+      .sort((a, b) => b.score - a.score || b.text.length - a.text.length);
+    const seen = new Set();
+    const attachments = [];
+    for (const anchor of root.querySelectorAll('a[href]')) {
+      let url;
+      try { url = new URL(anchor.href); } catch { continue; }
+      const name = clean(anchor.innerText || anchor.getAttribute("aria-label") || anchor.title);
+      if (url.protocol !== "https:" || url.href === assignmentUrl || !name || name.length > 120 || seen.has(url.href)) continue;
+      if (/^(?:home|calendar|settings|google apps|open in new window)$/i.test(name) || /(?:accounts\.google\.com|google\.com\/intl\/)/i.test(url.href)) continue;
+      seen.add(url.href);
+      attachments.push({ name, url: url.href });
+      if (attachments.length === 20) break;
+    }
+    return { description: candidates[0]?.text || "", attachments };
+  }, { title: item.title, assignmentUrl: item.url });
+  details.attachments = details.attachments.map(attachment => ({
+    id: `google-${createHash("sha256").update(attachment.url).digest("hex").slice(0, 20)}`,
+    ...attachment
+  }));
+  return details;
+}
+
 function payload(provider, items) {
   const canonical = provider === "google" ? "google-classroom" : "blackbaud";
   const unique = new Map();
@@ -247,6 +285,13 @@ async function scrapeGoogle(page) {
     await page.waitForTimeout(1_000);
     await autoScroll(page);
     items.push(...await visibleAssignments(page, "google", completed));
+  }
+  for (const item of new Map(items.filter(item => !item.completed).map(item => [item.sourceId, item])).values()) {
+    try {
+      await page.goto(item.url, { waitUntil: "domcontentloaded", timeout: 30_000 });
+      await page.waitForTimeout(600);
+      Object.assign(item, await googleAssignmentDetails(page, item));
+    } catch {}
   }
   return payload("google", items);
 }
