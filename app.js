@@ -1,5 +1,6 @@
 const STORE_KEY = "daymark-state-v2";
 const CLOUD_KEY_STORE = "daymark-cloud-key-v1";
+const FOCUS_PLAN_STORE = "daymark-focus-plan-v1";
 const DAY = 86_400_000;
 const HOSTED = !["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
 
@@ -104,7 +105,10 @@ let plannerCourse = "all";
 let calendarCursor = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 let selectedDate = dateKey();
 let toastTimer;
-const timer = { mode: "focus", total: 25 * 60, remaining: 25 * 60, running: false, deadline: 0, interval: null };
+let savedFocusPlan;
+try { savedFocusPlan = JSON.parse(localStorage.getItem(FOCUS_PLAN_STORE) || "{}"); } catch { savedFocusPlan = {}; }
+const focusPlan = window.DaymarkSchool.normalizeFocusPlan(savedFocusPlan);
+const timer = { phase: "work", plan: focusPlan, block: 1, total: focusPlan.work * 60, remaining: focusPlan.work * 60, running: false, deadline: 0, interval: null, taskId: "" };
 
 const app = document.querySelector("#app-content");
 const taskModal = document.querySelector("#task-modal");
@@ -389,17 +393,30 @@ function renderDashboard() {
   const today = dateKey();
   const openTasks = sortTasks(state.tasks.filter(task => !task.completed));
   const overdue = openTasks.filter(task => task.due && task.due < today).length;
-  const dueToday = openTasks.filter(task => task.due === today).length;
+  const todayTasks = openTasks.filter(task => task.due === today);
+  const dueToday = todayTasks.length;
   const dueSoon = openTasks.filter(task => task.due > today && task.due <= addDays(7)).length;
   const assessments = openTasks.filter(isAssessment);
+  const approachingTests = assessments.filter(task => task.due >= today && task.due <= addDays(14));
   const regularTasks = openTasks.filter(task => !isAssessment(task));
   const subjectGroups = [...new Set(regularTasks.map(task => task.courseId))].map(courseId => ({ course: courseFor(courseId), tasks: regularTasks.filter(task => task.courseId === courseId) }));
+  const todayClasses = scheduleForDate(new Date());
+  const rotation = rotationForDate(today);
+  const workload = openTasks.filter(task => task.due && task.due <= today).reduce((sum, task) => sum + (task.estimate || 25), 0);
+  const missingWork = openTasks.filter(task => window.DaymarkSchool.isSyncedMissingWork(task, today));
   const next = nextClass();
   const focusTask = openTasks[0];
   const firstName = state.profile.name ? `, ${e(state.profile.name)}` : "";
+  const classNames = [...new Set(todayClasses.map(item => item.course.name))];
 
   app.innerHTML = `<section class="page home-page">
     <div class="page-heading"><div><h1>${greeting()}${firstName}.</h1><p>${openTasks.length ? `${openTasks.length} open ${openTasks.length === 1 ? "item" : "items"}, organized by class so you can see what matters.` : "Everything is handled. Enjoy the clear desk."}</p></div></div>
+    <article class="card morning-brief"><div class="morning-brief-head"><div><h2>Morning brief</h2><p>${new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}${rotation ? ` · ${e(rotation)} day` : ""}</p></div><span>${workload} min workload</span></div><div class="morning-brief-grid">
+      <div><span>Today’s classes</span><strong>${classNames.length ? e(classNames.join(" · ")) : "No classes scheduled"}</strong></div>
+      <div><span>Work due</span><strong>${dueToday ? `${dueToday} ${dueToday === 1 ? "item" : "items"}` : "Nothing due today"}${overdue ? ` · ${overdue} overdue` : ""}</strong></div>
+      <div><span>Tests approaching</span><strong>${approachingTests.length ? `${e(approachingTests[0].title)} · ${relativeDate(approachingTests[0].due)}` : "None in the next 14 days"}</strong></div>
+    </div></article>
+    ${missingWork.length ? `<aside class="missing-watchdog" role="status"><span class="missing-watchdog-mark">!</span><div><strong>${missingWork.length} synced ${missingWork.length === 1 ? "item needs" : "items need"} attention</strong><p>${e(missingWork[0].title)}${missingWork.length > 1 ? ` and ${missingWork.length - 1} more` : ""} ${missingWork.length === 1 ? "is" : "are"} past due and still incomplete.</p></div><button class="text-link" data-go="planner">Review →</button></aside>` : ""}
     <div class="home-layout">
       <div class="home-main">
         ${assessments.length ? `<article class="card home-assessment-card"><div class="card-header"><div><h2>Tests & quizzes</h2><p>High-priority assessments stay above everyday work</p></div><span class="home-open-count">${assessments.length} upcoming</span></div>${taskRows(assessments)}</article>` : ""}
@@ -495,13 +512,17 @@ function renderFocus() {
   const totalToday = state.sessions.filter(session => session.date === dateKey()).reduce((sum, session) => sum + session.minutes, 0);
   const open = sortTasks(state.tasks.filter(task => !task.completed));
   app.innerHTML = `<section class="page">
-    <div class="page-heading"><div><span class="eyebrow">One thing at a time</span><h1>Focus</h1><p>Pick a task, start the clock, and give it your full attention.</p></div></div>
+    <div class="page-heading"><div><span class="eyebrow">One thing at a time</span><h1>Focus</h1><p>Choose your work, break, and block count. OG Sync handles every transition.</p></div></div>
     <div class="focus-layout">
       <article class="card timer-card"><div class="timer-inner">
-        <div class="timer-modes">${[["focus","Focus · 25"],["deep","Deep work · 50"],["break","Break · 5"]].map(([value,label]) => `<button class="timer-mode ${timer.mode === value ? "active" : ""}" data-timer-mode="${value}">${label}</button>`).join("")}</div>
-        <div class="timer-ring" id="timer-ring"><div class="timer-display"><strong id="timer-time">${timerText()}</strong><span id="timer-label">${timer.running ? "Stay with it" : "Ready when you are"}</span></div></div>
-        <div class="timer-controls"><button class="button button-dark" id="timer-start" data-timer-start>${timer.running ? "Pause" : timer.remaining < timer.total ? "Resume" : "Start session"}</button><button class="button button-quiet" data-timer-reset>Reset</button></div>
-        <select class="focus-task-select" id="focus-task" aria-label="Task for this focus session"><option value="">General focus</option>${open.map(task => `<option value="${task.id}">${e(task.title)} · ${e(courseFor(task.courseId).name)}</option>`).join("")}</select>
+        <div class="timer-plan" aria-label="Focus cycle settings">
+          <label><span>Work</span><span><input data-timer-setting="work" type="number" min="1" max="180" value="${timer.plan.work}" aria-label="Work minutes" /> min</span></label>
+          <label><span>Break</span><span><input data-timer-setting="break" type="number" min="1" max="60" value="${timer.plan.break}" aria-label="Break minutes" /> min</span></label>
+          <label><span>Blocks</span><select data-timer-setting="blocks" aria-label="Number of focus blocks">${Array.from({ length: 8 }, (_, index) => `<option value="${index + 1}" ${timer.plan.blocks === index + 1 ? "selected" : ""}>${index + 1}</option>`).join("")}</select></label>
+        </div>
+        <div class="timer-ring ${timer.phase}" id="timer-ring"><div class="timer-display"><strong id="timer-time">${timerText()}</strong><span id="timer-label">${timerPhaseText()}</span></div></div>
+        <div class="timer-controls"><button class="button button-dark" id="timer-start" data-timer-start>${timerButtonText()}</button><button class="button button-quiet" data-timer-reset>Reset cycle</button></div>
+        <select class="focus-task-select" id="focus-task" aria-label="Task for this focus session"><option value="">General focus</option>${open.map(task => `<option value="${task.id}" ${timer.taskId === task.id ? "selected" : ""}>${e(task.title)} · ${e(courseFor(task.courseId).name)}</option>`).join("")}</select>
       </div></article>
       <aside class="focus-side">
         <article class="card stat-card"><span class="eyebrow">Focused today</span><strong class="big-stat">${totalToday}<small> min</small></strong><span class="stat-caption">${totalToday >= 50 ? "Strong work." : "A session is a good start."}</span></article>
@@ -758,15 +779,29 @@ function timerText() {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
+function timerPhaseText() {
+  return `${timer.phase === "break" ? "Break" : "Work"} · Block ${timer.block} of ${timer.plan.blocks}`;
+}
+
+function timerButtonText() {
+  if (timer.running) return "Pause";
+  return timer.remaining < timer.total ? "Resume" : "Start cycle";
+}
+
 function updateTimerDisplay() {
   const display = document.querySelector("#timer-time");
   const ring = document.querySelector("#timer-ring");
   const label = document.querySelector("#timer-label");
   const button = document.querySelector("#timer-start");
   if (display) display.textContent = timerText();
-  if (ring) ring.style.setProperty("--progress", `${(1 - timer.remaining / timer.total) * 360}deg`);
-  if (label) label.textContent = timer.running ? (timer.mode === "break" ? "Take a real break" : "Stay with it") : "Ready when you are";
-  if (button) button.textContent = timer.running ? "Pause" : timer.remaining < timer.total ? "Resume" : "Start session";
+  if (ring) {
+    ring.classList.toggle("break", timer.phase === "break");
+    ring.classList.toggle("work", timer.phase === "work");
+    ring.style.setProperty("--progress", `${(1 - timer.remaining / timer.total) * 360}deg`);
+  }
+  if (label) label.textContent = timerPhaseText();
+  if (button) button.textContent = timerButtonText();
+  document.querySelectorAll("[data-timer-setting], #focus-task").forEach(control => { control.disabled = timer.running; });
   document.title = timer.running ? `${timerText()} · OG Sync` : "OG Sync — School planner";
 }
 
@@ -775,16 +810,24 @@ function tickTimer() {
   timer.remaining = Math.max(0, Math.ceil((timer.deadline - Date.now()) / 1000));
   updateTimerDisplay();
   if (timer.remaining > 0) return;
-  timer.running = false;
-  clearInterval(timer.interval);
-  if (timer.mode !== "break") {
-    const taskId = document.querySelector("#focus-task")?.value;
-    const task = state.tasks.find(item => item.id === taskId);
+  if (timer.phase === "work") {
+    const task = state.tasks.find(item => item.id === timer.taskId);
     state.sessions.push({ id: crypto.randomUUID(), date: dateKey(), minutes: Math.round(timer.total / 60), label: task?.title || "General focus" });
     save();
   }
-  showToast(timer.mode === "break" ? "Break complete. Ready for another round?" : "Focus session complete. Nice work.");
-  render();
+  const finishedPhase = timer.phase;
+  const next = window.DaymarkSchool.nextFocusPhase(timer.phase, timer.block, timer.plan.blocks);
+  if (next.complete) {
+    clearInterval(timer.interval);
+    Object.assign(timer, { phase: "work", block: 1, total: timer.plan.work * 60, remaining: timer.plan.work * 60, running: false, deadline: 0, interval: null });
+    showToast(`Cycle complete. ${timer.plan.blocks} ${timer.plan.blocks === 1 ? "block" : "blocks"} finished.`);
+  } else {
+    const minutes = next.phase === "work" ? timer.plan.work : timer.plan.break;
+    Object.assign(timer, { phase: next.phase, block: next.block, total: minutes * 60, remaining: minutes * 60, deadline: Date.now() + minutes * 60_000 });
+    showToast(finishedPhase === "work" ? `Block ${timer.block} complete. Break started.` : `Break complete. Block ${timer.block} started.`);
+  }
+  if (currentPage() === "focus") renderFocus();
+  else updateTimerDisplay();
 }
 
 function toggleTimer() {
@@ -794,6 +837,7 @@ function toggleTimer() {
     clearInterval(timer.interval);
   } else {
     if (!timer.remaining) timer.remaining = timer.total;
+    timer.taskId = document.querySelector("#focus-task")?.value || timer.taskId;
     timer.running = true;
     timer.deadline = Date.now() + timer.remaining * 1000;
     timer.interval = setInterval(tickTimer, 250);
@@ -801,11 +845,21 @@ function toggleTimer() {
   updateTimerDisplay();
 }
 
-function setTimerMode(mode) {
+function resetTimer() {
   clearInterval(timer.interval);
-  const minutes = { focus: 25, deep: 50, break: 5 }[mode];
-  Object.assign(timer, { mode, total: minutes * 60, remaining: minutes * 60, running: false, deadline: 0 });
-  renderFocus();
+  Object.assign(timer, { phase: "work", block: 1, total: timer.plan.work * 60, remaining: timer.plan.work * 60, running: false, deadline: 0, interval: null });
+  updateTimerDisplay();
+}
+
+function updateFocusPlan() {
+  if (timer.running) return;
+  timer.plan = window.DaymarkSchool.normalizeFocusPlan({
+    work: document.querySelector('[data-timer-setting="work"]')?.value,
+    break: document.querySelector('[data-timer-setting="break"]')?.value,
+    blocks: document.querySelector('[data-timer-setting="blocks"]')?.value
+  });
+  localStorage.setItem(FOCUS_PLAN_STORE, JSON.stringify(timer.plan));
+  resetTimer();
 }
 
 function openTaskModal() {
@@ -1002,10 +1056,8 @@ document.addEventListener("click", event => {
   const removeAttachment = event.target.closest("[data-remove-attachment]");
   if (removeAttachment) { detailDraft.attachments = detailDraft.attachments.filter(item => item.id !== removeAttachment.dataset.removeAttachment); renderDetailLists(); }
 
-  const timerMode = event.target.closest("[data-timer-mode]");
-  if (timerMode) setTimerMode(timerMode.dataset.timerMode);
   if (event.target.closest("[data-timer-start]")) toggleTimer();
-  if (event.target.closest("[data-timer-reset]")) { clearInterval(timer.interval); timer.running = false; timer.remaining = timer.total; updateTimerDisplay(); }
+  if (event.target.closest("[data-timer-reset]")) resetTimer();
 
   if (event.target.closest("[data-export]")) {
     const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
@@ -1045,6 +1097,7 @@ document.addEventListener("click", event => {
 });
 
 document.addEventListener("change", event => {
+  if (event.target.closest("[data-timer-setting]")) updateFocusPlan();
   const toggle = event.target.closest("[data-toggle-task]");
   if (toggle) {
     const task = state.tasks.find(item => item.id === toggle.dataset.toggleTask);

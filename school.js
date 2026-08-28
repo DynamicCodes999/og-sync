@@ -43,5 +43,27 @@
     return /\b(test|quiz|exam|midterm|final|assessment)\b/i.test(`${task?.type || ""} ${task?.title || ""}`);
   }
 
-  return { rotationForDate, gradeSummary, scoreNeeded, isAssessment };
+  function normalizeFocusPlan(plan = {}) {
+    const number = (value, fallback, min, max) => {
+      const parsed = Math.round(Number(value));
+      return Number.isFinite(parsed) ? Math.min(max, Math.max(min, parsed)) : fallback;
+    };
+    return {
+      work: number(plan.work, 25, 1, 180),
+      break: number(plan.break, 5, 1, 60),
+      blocks: number(plan.blocks, 1, 1, 8)
+    };
+  }
+
+  function nextFocusPhase(phase, block, blocks) {
+    if (phase === "work") return { phase: "break", block, complete: false };
+    if (block < blocks) return { phase: "work", block: block + 1, complete: false };
+    return { phase: "work", block: 1, complete: true };
+  }
+
+  function isSyncedMissingWork(task, today) {
+    return Boolean(!task?.completed && task.due && task.due < today && task.sources?.some(source => source.provider === "google" || source.provider === "blackbaud"));
+  }
+
+  return { rotationForDate, gradeSummary, scoreNeeded, isAssessment, normalizeFocusPlan, nextFocusPhase, isSyncedMissingWork };
 });
