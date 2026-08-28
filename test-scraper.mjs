@@ -1,7 +1,22 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
-import { blackbaudAssignments, googleAssignmentDetails, signedIn, visibleAssignments } from "./scraper.mjs";
+import { assignProviderPage, blackbaudAssignments, googleAssignmentDetails, signedIn, visibleAssignments } from "./scraper.mjs";
+
+test("Google and Blackbaud keep independent browser tabs", async () => {
+  const blank = { isClosed: () => false, url: () => "about:blank" };
+  const spare = { isClosed: () => false, url: () => "chrome://new-tab-page/" };
+  const browser = {
+    pages: () => [blank, spare],
+    newPage: async () => { throw new Error("The existing spare tab should be reused"); }
+  };
+  const registry = new Map();
+  const google = await assignProviderPage("google", browser, registry);
+  const blackbaud = await assignProviderPage("blackbaud", browser, registry);
+  assert.notEqual(google, blackbaud);
+  assert.equal(registry.get("google"), google);
+  assert.equal(registry.get("blackbaud"), blackbaud);
+});
 
 test("Blackbaud redirect URLs are not mistaken for signed-in school pages", () => {
   assert.equal(signedIn("blackbaud", { url: () => "https://app.blackbaud.com/signin/?redirectUrl=https%3A%2F%2Foakgrovelutheran.myschoolapp.com" }), false);

@@ -13,7 +13,7 @@ const BASE = new URL(BASE_URL);
 const IS_LOCAL = ["localhost", "127.0.0.1", "[::1]"].includes(BASE.hostname);
 const STATIC_FILES = new Set(["index.html", "styles.css", "app.js", "sync.js", "school.js", "icon.svg", "manifest.webmanifest", "sw.js"]);
 const MIME = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml", ".webmanifest": "application/manifest+json" };
-const AUTO_SYNC_MINUTES = Number(process.env.DAYMARK_AUTO_SYNC_MINUTES || 15);
+const AUTO_SYNC_SECONDS = Number(process.env.DAYMARK_AUTO_SYNC_SECONDS || 60);
 const cloudActivity = { configured: cloudConfigured(), running: false, lastAttemptAt: "", lastSuccessAt: "", lastError: "" };
 
 if (!IS_LOCAL && BASE.protocol !== "https:") throw new Error("BASE_URL must use HTTPS outside localhost");
@@ -88,15 +88,24 @@ async function runBackgroundSync() {
   cloudActivity.lastAttemptAt = new Date().toISOString();
   cloudActivity.lastError = "";
   try {
+    const errors = [];
+    let succeeded = false;
     for (const provider of ["google", "blackbaud"]) {
-      await openScraper(provider, { foreground: false });
-      const result = await scrapeAndPush(provider, { foreground: false });
-      if (result.cloud?.error) throw new Error(`${provider}: ${result.cloud.error}`);
+      try {
+        await openScraper(provider, { foreground: false });
+        const result = await scrapeAndPush(provider, { foreground: false });
+        if (result.cloud?.error) throw new Error(result.cloud.error);
+        succeeded = true;
+      } catch (error) {
+        errors.push(`${provider}: ${error.message}`);
+      }
     }
-    cloudActivity.lastSuccessAt = new Date().toISOString();
+    if (succeeded) cloudActivity.lastSuccessAt = new Date().toISOString();
+    cloudActivity.lastError = errors.join("; ");
+    if (errors.length) console.error("OG Sync background sync:", cloudActivity.lastError);
   } catch (error) {
     cloudActivity.lastError = error.message;
-    console.error("Daymark background sync:", error.message);
+    console.error("OG Sync background sync:", error.message);
   } finally {
     cloudActivity.running = false;
   }
@@ -133,11 +142,11 @@ const server = createServer((req, res) => handle(req, res).catch(error => {
 }));
 
 server.listen(PORT, HOST, () => {
-  console.log(`Daymark running at ${BASE_URL}`);
-  if (cloudActivity.configured && Number.isFinite(AUTO_SYNC_MINUTES) && AUTO_SYNC_MINUTES >= 5) {
+  console.log(`OG Sync running at ${BASE_URL}`);
+  if (cloudActivity.configured && Number.isFinite(AUTO_SYNC_SECONDS) && AUTO_SYNC_SECONDS >= 60) {
     setTimeout(runBackgroundSync, 5_000).unref();
-    setInterval(runBackgroundSync, AUTO_SYNC_MINUTES * 60_000).unref();
-    console.log(`Cloud bridge enabled; syncing every ${AUTO_SYNC_MINUTES} minutes.`);
+    setInterval(runBackgroundSync, AUTO_SYNC_SECONDS * 1_000).unref();
+    console.log(`Cloud bridge enabled; syncing every ${AUTO_SYNC_SECONDS} seconds.`);
   }
 });
 for (const signal of ["SIGINT", "SIGTERM"]) process.once(signal, async () => {

@@ -16,6 +16,17 @@ function validProvider(provider) {
   if (!PROVIDERS[provider]) throw new Error("Unknown scraper provider");
 }
 
+async function createPage(browser) {
+  try { return await browser.newPage(); }
+  catch (error) {
+    const opener = browser.pages().find(page => !page.isClosed());
+    if (!opener) throw error;
+    const page = browser.waitForEvent("page", { timeout: 5_000 });
+    await opener.evaluate(() => window.open("about:blank", "_blank"));
+    return page;
+  }
+}
+
 async function browserContext() {
   if (context) return context;
   await mkdir(PROFILE_DIR, { recursive: true, mode: 0o700 });
@@ -24,6 +35,7 @@ async function browserContext() {
     viewport: null,
     args: ["--start-maximized"]
   });
+  while (context.pages().length < Object.keys(PROVIDERS).length) await createPage(context);
   context.on("close", () => { context = undefined; pages.clear(); });
   return context;
 }
@@ -31,6 +43,14 @@ async function browserContext() {
 function livePage(provider) {
   const page = pages.get(provider);
   return page && !page.isClosed() ? page : undefined;
+}
+
+export async function assignProviderPage(provider, browser, registry = pages) {
+  validProvider(provider);
+  const assigned = new Set([...registry.values()].filter(page => !page.isClosed()));
+  const page = browser.pages().find(candidate => !candidate.isClosed() && !assigned.has(candidate)) || await createPage(browser);
+  registry.set(provider, page);
+  return page;
 }
 
 export function signedIn(provider, page) {
@@ -47,10 +67,7 @@ export async function openScraper(provider, { foreground = true } = {}) {
   const browser = await browserContext();
   let page = livePage(provider);
   if (!page) {
-    page = browser.pages().find(candidate => !candidate.isClosed());
-    if (!page) page = await browser.newPage();
-    pages.clear();
-    pages.set(provider, page);
+    page = await assignProviderPage(provider, browser);
     await page.goto(PROVIDERS[provider], { waitUntil: "domcontentloaded", timeout: 30_000 }).catch(() => {});
   }
   if (foreground) await page.bringToFront();

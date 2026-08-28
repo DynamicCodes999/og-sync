@@ -31,8 +31,9 @@ The key is stored in that browser until **Sync & import → Change sync key** is
 - Vercel hosts the interface and an authenticated state API.
 - A private Vercel Blob stores normalized planner data.
 - The trusted Mac keeps Google and Blackbaud sessions under `.data/scraper-profile` and sends only classes, assignments, URLs, completion state, and sync timestamps.
-- The Mac helper starts at login and imports every 15 minutes while the Mac is awake and online.
-- The hosted app refreshes cloud state every minute while open.
+- The Mac helper starts at login and checks both providers every minute while the Mac is awake and online.
+- The Google Classroom and Blackbaud sessions stay open in separate tabs; one provider failing does not block the other.
+- The hosted app refreshes cloud state every 15 seconds while open.
 - If the Mac is off, the hosted planner still works with the last successful cloud state; new school imports resume after the Mac comes back online.
 
 The helper is already installed on this Mac. Useful commands:

@@ -1234,4 +1234,4 @@ if (!location.hash) history.replaceState(null, "", "#dashboard");
 render();
 if (HOSTED && !cloud.key) showCloudSignIn();
 else setTimeout(autoSync, 1_500);
-setInterval(autoSync, HOSTED ? 60_000 : 15 * 60_000);
+setInterval(autoSync, HOSTED ? 15_000 : 60_000);
