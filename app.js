@@ -426,7 +426,7 @@ async function pushCloudState() {
 }
 
 function taskRows(tasks, actions = false, grouped = false) {
-  if (!tasks.length) return '<div class="empty-state"><span class="empty-icon">✓</span><h3>Nothing here</h3><p>You have a little breathing room.</p></div>';
+  if (!tasks.length) return '<div class="empty-state"><span class="empty-icon">✓</span><h3>No tasks here</h3><p>This list is empty.</p></div>';
   return `<div class="task-list">${tasks.map(task => {
     const course = courseFor(task.courseId);
     const overdue = !task.completed && dueTimestamp(task) < Date.now() && task.due !== dateKey();
@@ -500,14 +500,14 @@ function renderDashboard() {
     <div class="page-heading today-heading"><div><h1>Today</h1><p>${todayLabel}${rotation ? ` · ${e(rotation)} day` : ""}</p></div><span class="today-open-count">${openTasks.length} open</span></div>
     <section class="card today-glance" aria-label="Today at a glance">
       <div><span>School day</span><strong>${classNames.length ? `${classNames.length} ${classNames.length === 1 ? "class" : "classes"}` : "No classes today"}</strong><small>${e(nextClassText)}</small></div>
-      <div><span>Due</span><strong>${dueToday} today${overdue ? ` · ${overdue} overdue` : ""}</strong><small>${missingWork.length ? `${missingWork.length} synced ${missingWork.length === 1 ? "item needs" : "items need"} attention` : "No missing synced work"}</small></div>
-      <div><span>Next assessment</span><strong>${approachingTests.length ? e(approachingTests[0].title) : "Nothing approaching"}</strong><small>${approachingTests.length ? relativeDate(approachingTests[0].due) : "Next 14 days are clear"}</small></div>
+      <div><span>Due</span><strong>${dueToday} today${overdue ? ` · ${overdue} overdue` : ""}</strong><small>${missingWork.length ? `${missingWork.length} ${missingWork.length === 1 ? "item needs" : "items need"} attention` : "No missing work found"}</small></div>
+      <div><span>Next assessment</span><strong>${approachingTests.length ? e(approachingTests[0].title) : "None scheduled"}</strong><small>${approachingTests.length ? relativeDate(approachingTests[0].due) : "Nothing in the next 14 days"}</small></div>
       <div><span>Workload</span><strong>${workload} min</strong><small>Due or overdue today</small></div>
     </section>
-    ${missingWork.length ? `<aside class="missing-watchdog" role="status"><span class="missing-watchdog-mark">!</span><div><strong>${missingWork.length} synced ${missingWork.length === 1 ? "item needs" : "items need"} attention</strong><p>${e(missingWork[0].title)}${missingWork.length > 1 ? ` and ${missingWork.length - 1} more` : ""} ${missingWork.length === 1 ? "is" : "are"} past due and still incomplete.</p></div><button class="text-link" data-go="planner">Review →</button></aside>` : ""}
-    <article class="card today-work"><div class="card-header"><div><h2>Your work</h2><p>Assessments first, then assignments by class</p></div><button class="text-link" data-go="planner">Open planner →</button></div>
+    ${missingWork.length ? `<aside class="missing-watchdog" role="status"><span class="missing-watchdog-mark">!</span><div><strong>${missingWork.length} overdue ${missingWork.length === 1 ? "item" : "items"}</strong><p>${e(missingWork[0].title)}${missingWork.length > 1 ? ` and ${missingWork.length - 1} more` : ""} ${missingWork.length === 1 ? "is" : "are"} still marked incomplete.</p></div><button class="text-link" data-go="planner">Review →</button></aside>` : ""}
+    <article class="card today-work"><div class="card-header"><div><h2>Your work</h2><p>Tests and quizzes appear first. Other work is grouped by class.</p></div><button class="text-link" data-go="planner">Open planner →</button></div>
       ${assessments.length ? `<section class="today-assessments"><div class="today-section-title"><h3>Tests & quizzes</h3><span>${assessments.length}</span></div>${taskRows(assessments.slice(0, 4))}</section>` : ""}
-      ${subjectGroups.length ? `<div class="today-subject-grid">${subjectGroups.map(group => `<section class="today-subject"><div class="home-subject-heading"><div><span class="course-dot" style="--course-color:${group.course.color}"></span><h3>${e(group.course.name)}</h3></div><span>${group.items.length}</span></div>${taskRows(group.items.slice(0, 3), false, true)}${group.items.length > 3 ? `<button class="home-subject-more" data-go="planner">+${group.items.length - 3} more</button>` : ""}</section>`).join("")}</div>` : assessments.length ? "" : '<div class="empty-state"><span class="empty-icon">✓</span><h3>You’re caught up</h3><p>There are no open assignments waiting for you.</p></div>'}
+      ${subjectGroups.length ? `<div class="today-subject-grid">${subjectGroups.map(group => `<section class="today-subject"><div class="home-subject-heading"><div><span class="course-dot" style="--course-color:${group.course.color}"></span><h3>${e(group.course.name)}</h3></div><span>${group.items.length}</span></div>${taskRows(group.items.slice(0, 3), false, true)}${group.items.length > 3 ? `<button class="home-subject-more" data-go="planner">+${group.items.length - 3} more</button>` : ""}</section>`).join("")}</div>` : assessments.length ? "" : '<div class="empty-state"><span class="empty-icon">✓</span><h3>All caught up</h3><p>You do not have any open assignments.</p></div>'}
       <footer class="today-work-footer"><span>${overdue} overdue · ${dueToday} due today · ${dueSoon} in the next 7 days</span>${openTasks[0] ? `<button class="text-link" data-focus-task="${openTasks[0].id}">Focus on the next task →</button>` : ""}</footer>
     </article>
   </section>`;
@@ -533,14 +533,14 @@ function calendarCells() {
 function renderCalendar() {
   const selectedTasks = sortTasks(state.tasks.filter(task => task.due === selectedDate));
   app.innerHTML = `<section class="page">
-    <div class="page-heading"><div><span class="eyebrow">Everything in one place</span><h1>Calendar</h1><p>See assignments, quizzes, projects, and tests before they become emergencies.</p></div><button class="button button-dark" data-open-task>+ Add item</button></div>
+    <div class="page-heading"><div><span class="eyebrow">Everything in one place</span><h1>Calendar</h1><p>See what is due and when.</p></div><button class="button button-dark" data-open-task>+ Add item</button></div>
     <div class="calendar-layout">
       <article class="card calendar-card">
         <div class="calendar-toolbar"><h2>${calendarCursor.toLocaleDateString(undefined, { month: "long", year: "numeric" })}</h2><div class="toolbar-group"><button class="button button-quiet" data-calendar-nav="today">Today</button><button class="icon-button" data-calendar-nav="prev" aria-label="Previous month">${icons.left}</button><button class="icon-button" data-calendar-nav="next" aria-label="Next month">${icons.right}</button></div></div>
         <div class="weekdays">${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(day => `<span>${day}</span>`).join("")}</div>
         <div class="calendar-grid">${calendarCells()}</div>
       </article>
-      <aside class="card agenda-card"><div class="agenda-date"><span class="eyebrow">Selected day</span><strong>${parseDate(selectedDate).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}</strong></div><div class="agenda-list">${selectedTasks.length ? selectedTasks.map(task => `<div class="agenda-item" style="--item-color:${courseFor(task.courseId).color}"><strong>${e(task.title)}</strong><span>${e(courseFor(task.courseId).name)} · ${formatTime(task.time)}</span></div>`).join("") : '<div class="empty-state"><h3>No due dates</h3><p>This day is clear.</p></div>'}</div></aside>
+      <aside class="card agenda-card"><div class="agenda-date"><span class="eyebrow">Selected day</span><strong>${parseDate(selectedDate).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}</strong></div><div class="agenda-list">${selectedTasks.length ? selectedTasks.map(task => `<div class="agenda-item" style="--item-color:${courseFor(task.courseId).color}"><strong>${e(task.title)}</strong><span>${e(courseFor(task.courseId).name)} · ${formatTime(task.time)}</span></div>`).join("") : '<div class="empty-state"><h3>No due dates</h3><p>Nothing is due on this day.</p></div>'}</div></aside>
     </div>
   </section>`;
 }
@@ -562,9 +562,9 @@ function renderPlanner() {
   if (plannerView === "done") tasks = tasks.filter(task => task.completed);
   const groups = taskGroupsByCourse(tasks);
   app.innerHTML = `<section class="page">
-    <div class="page-heading"><div><h1>Planner</h1><p>Assignments grouped by class, with assessments first and everything else by due date.</p></div><button class="button button-dark" data-open-task>+ Add task</button></div>
+    <div class="page-heading"><div><h1>Planner</h1><p>Browse work by class and due date. Tests and quizzes appear first.</p></div><button class="button button-dark" data-open-task>+ Add task</button></div>
     <div class="planner-toolbar"><div class="segmented">${[["open","Open"],["today","Today"],["week","Next 7 days"],["done","Completed"]].map(([value,label]) => `<button class="segment ${plannerView === value ? "active" : ""}" data-planner-view="${value}">${label}</button>`).join("")}</div><select class="filter-select" id="planner-course" aria-label="Filter by class"><option value="all">All classes</option>${state.courses.map(course => `<option value="${course.id}" ${plannerCourse === course.id ? "selected" : ""}>${e(course.name)}</option>`).join("")}</select></div>
-    ${groups.length ? `<div class="card planner-board">${groups.map(group => `<section class="planner-course"><div class="planner-group-title"><div><span class="course-dot" style="--course-color:${group.course.color}"></span><h2>${e(group.course.name)}</h2></div><span>${group.items.length} ${group.items.length === 1 ? "item" : "items"}</span></div>${taskRows(group.items, true, true)}</section>`).join("")}</div>` : '<article class="card empty-state"><span class="empty-icon">✓</span><h3>This view is clear</h3><p>Change the filter or add a new task.</p></article>'}
+    ${groups.length ? `<div class="card planner-board">${groups.map(group => `<section class="planner-course"><div class="planner-group-title"><div><span class="course-dot" style="--course-color:${group.course.color}"></span><h2>${e(group.course.name)}</h2></div><span>${group.items.length} ${group.items.length === 1 ? "item" : "items"}</span></div>${taskRows(group.items, true, true)}</section>`).join("")}</div>` : '<article class="card empty-state"><span class="empty-icon">✓</span><h3>No tasks match this view</h3><p>Try a different filter or add a task.</p></article>'}
   </section>`;
 }
 
@@ -584,7 +584,7 @@ function renderFocus() {
   const totalToday = state.sessions.filter(session => session.date === dateKey()).reduce((sum, session) => sum + session.minutes, 0);
   const open = sortTasks(state.tasks.filter(task => !task.completed));
   app.innerHTML = `<section class="page">
-    <div class="page-heading"><div><h1>Focus</h1><p>Choose your work, break, and block count. OG Sync handles every transition.</p></div><button class="button button-quiet timer-alert-button" data-timer-alert aria-pressed="${timerAlerts}">${timerAlerts ? icons.bell : icons.bellOff}<span>${timerAlerts ? "Bell on" : "Bell off"}</span></button></div>
+    <div class="page-heading"><div><h1>Focus</h1><p>Set the work time, break time, and number of blocks.</p></div><button class="button button-quiet timer-alert-button" data-timer-alert aria-pressed="${timerAlerts}">${timerAlerts ? icons.bell : icons.bellOff}<span>${timerAlerts ? "Bell on" : "Bell off"}</span></button></div>
     <div class="focus-layout">
       <article class="card timer-card"><div class="timer-inner">
         <div class="timer-plan" aria-label="Focus cycle settings">
@@ -597,9 +597,9 @@ function renderFocus() {
         <select class="focus-task-select" id="focus-task" aria-label="Task for this focus session"><option value="">General focus</option>${open.map(task => `<option value="${task.id}" ${timer.taskId === task.id ? "selected" : ""}>${e(task.title)} · ${e(courseFor(task.courseId).name)}</option>`).join("")}</select>
       </div></article>
       <aside class="focus-side">
-        <article class="card stat-card"><span class="eyebrow">Focused today</span><strong class="big-stat">${totalToday}<small> min</small></strong><span class="stat-caption">${totalToday >= 50 ? "Strong work." : "A session is a good start."}</span></article>
+        <article class="card stat-card"><span class="eyebrow">Focused today</span><strong class="big-stat">${totalToday}<small> min</small></strong><span class="stat-caption">${totalToday >= 50 ? "Nice work today." : "Finish a session to get started."}</span></article>
         <article class="card stat-card"><span class="eyebrow">Current streak</span><strong class="big-stat">${streak()}<small> days</small></strong><span class="stat-caption">5+ minutes counts</span></article>
-        <article class="card"><div class="card-header"><div><h3>Recent sessions</h3><p>Your last focused blocks</p></div></div><div class="session-list">${state.sessions.length ? state.sessions.slice().sort((a,b) => parseDate(b.date) - parseDate(a.date)).slice(0,5).map(session => `<div class="session-item"><span class="session-icon">${icons.clock}</span><div><strong>${e(session.label || "General focus")}</strong><span>${relativeDate(session.date)}</span></div><span class="session-minutes">${session.minutes} min</span></div>`).join("") : '<div class="empty-state"><p>Your finished sessions appear here.</p></div>'}</div></article>
+        <article class="card"><div class="card-header"><div><h3>Recent sessions</h3><p>Completed focus blocks</p></div></div><div class="session-list">${state.sessions.length ? state.sessions.slice().sort((a,b) => parseDate(b.date) - parseDate(a.date)).slice(0,5).map(session => `<div class="session-item"><span class="session-icon">${icons.clock}</span><div><strong>${e(session.label || "General focus")}</strong><span>${relativeDate(session.date)}</span></div><span class="session-minutes">${session.minutes} min</span></div>`).join("") : '<div class="empty-state"><p>Completed sessions will appear here.</p></div>'}</div></article>
       </aside>
     </div>
   </section>`;
@@ -619,7 +619,7 @@ function renderClasses() {
   const rotation = rotationForDate(dateKey(today));
   const todayItems = scheduleForDate(today);
   app.innerHTML = `<section class="page">
-    <div class="page-heading"><div><span class="eyebrow">Your school day</span><h1>Classes & schedule</h1><p>See today’s order, rooms, periods, and rotating-day classes.</p></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="button button-quiet" data-configure-schedule>Configure A/B cycle</button><button class="button button-dark" data-add-class>+ Add class</button></div></div>
+    <div class="page-heading"><div><span class="eyebrow">Your school day</span><h1>Classes & schedule</h1><p>Check today’s classes, times, rooms, and rotation.</p></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="button button-quiet" data-configure-schedule>Configure A/B cycle</button><button class="button button-dark" data-add-class>+ Add class</button></div></div>
     <article class="card school-day-card"><div class="school-day-heading"><div><span class="eyebrow">${today.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}</span><h2>Today’s schedule</h2></div>${rotation ? `<span class="rotation-badge">${e(rotation)} day</span>` : '<span class="status-pill">No rotation set</span>'}</div>
       ${todayItems.length ? `<div class="schedule-timeline">${todayItems.map(({ course, slot }) => `<div class="schedule-row"><span class="schedule-time">${formatTime(slot.start)}</span><span class="schedule-line" style="--schedule-color:${course.color}"></span><div><strong>${e(course.name)}</strong><span>${e([slot.period, course.room, course.teacher].filter(Boolean).join(" · ") || `Ends ${formatTime(slot.end)}`)}</span></div><small>${formatTime(slot.end)}</small></div>`).join("")}</div>` : '<div class="empty-state"><h3>No classes scheduled today</h3><p>Edit each class to add meeting days, times, room, period, and rotation.</p></div>'}
     </article>
@@ -628,7 +628,7 @@ function renderClasses() {
       const slot = course.schedule?.[0];
       const details = [course.teacher, course.room].filter(Boolean).map(e).join(" · ");
       return `<article class="card class-card"><div class="class-color" style="--class-bg:${course.color}"><span class="eyebrow">${tasks.length} open ${tasks.length === 1 ? "item" : "items"}</span><h2>${e(course.name)}</h2><p>${details || "No teacher or room added"}</p></div><div class="class-details"><div class="class-detail-row"><span>Schedule</span><strong>${scheduleText(course)}${slot ? ` · ${e(slot.period || formatTime(slot.start))}` : ""}</strong></div><div class="class-detail-row"><span>Next due</span><strong>${tasks[0] ? `${relativeDate(tasks[0].due)} · ${e(tasks[0].title)}` : "All clear"}</strong></div><div style="display:flex;align-items:center;justify-content:space-between;margin-top:15px"><button class="text-link" data-course-work="${course.id}">View class work →</button><div style="display:flex"><button class="mini-action" data-edit-class="${course.id}" aria-label="Edit ${e(course.name)}">✎</button><button class="mini-action" data-delete-class="${course.id}" aria-label="Delete ${e(course.name)}">${icons.trash}</button></div></div></div></article>`;
-    }).join("")}</div>` : '<article class="card empty-state"><span class="empty-icon">＋</span><h3>Add your first class</h3><p>Your assignments and schedule will organize around it.</p><button class="button button-dark" data-add-class style="margin-top:16px">Add class</button></article>'}
+    }).join("")}</div>` : '<article class="card empty-state"><span class="empty-icon">＋</span><h3>Add your first class</h3><p>Add a class to start organizing assignments and your schedule.</p><button class="button button-dark" data-add-class style="margin-top:16px">Add class</button></article>'}
   </section>`;
 }
 
@@ -642,8 +642,8 @@ function renderGrades() {
     ? '<button class="button button-quiet" data-cloud-refresh>Refresh cloud</button>'
     : '<button class="button button-dark" data-sync-provider="blackbaud">Sync grades</button>';
   app.innerHTML = `<section class="page">
-    <div class="page-heading"><div><h1>Grades</h1><p>Your published My Oak Grove grades, imported automatically.</p></div>${refreshButton}</div>
-    <aside class="card grade-note"><span class="integration-logo">%</span><div><h3>Official totals from My Oak Grove</h3><p>OG Sync uses Blackbaud’s current percentage so weighted categories stay accurate. Gradebook changes appear after the trusted Mac helper syncs.</p></div></aside>
+    <div class="page-heading"><div><h1>Grades</h1><p>View your latest published grades from My Oak Grove.</p></div>${refreshButton}</div>
+    <aside class="card grade-note"><span class="integration-logo">%</span><div><h3>Current totals from My Oak Grove</h3><p>These are the percentages reported by Blackbaud, including any category weights your teachers use. The Mac helper checks for updates while it is running.</p></div></aside>
     ${coursesWithGrades.length ? `<div class="grades-grid">${coursesWithGrades.map(course => {
       const items = state.gradeItems.filter(item => item.courseId === course.id).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
       const summary = window.DaymarkSchool.gradeSummary(items);
@@ -657,33 +657,33 @@ function renderGrades() {
         ${items.length ? `<div class="grade-items">${items.slice(0, 8).map(item => `<div class="grade-item"><div><strong>${e(item.title)}</strong><span>${e([item.type, item.date ? relativeDate(item.date) : "No date"].filter(Boolean).join(" · "))}</span></div><span>${formatPoints(item.score)} / ${formatPoints(item.pointsPossible)}</span></div>`).join("")}</div>` : '<p class="grade-empty">No individual scores have been published for this marking period.</p>'}
         ${official?.calculationMethod ? '<p class="grade-method">Blackbaud calculates this total using your teacher’s gradebook rules.</p>' : ""}
       </article>`;
-    }).join("")}</div>` : `<article class="card grades-empty"><div class="grades-empty-mark">%</div><div><h2>No published grades yet</h2><p>Keep the trusted Mac helper running and signed into My Oak Grove. Official percentages and graded work will appear here automatically.</p></div></article>`}
+    }).join("")}</div>` : `<article class="card grades-empty"><div class="grades-empty-mark">%</div><div><h2>No grades found</h2><p>Keep the Mac helper running and signed in to My Oak Grove. New grades will appear after the next sync.</p></div></article>`}
   </section>`;
 }
 
 function renderSync() {
   if (HOSTED) {
     app.innerHTML = `<section class="page">
-      <div class="page-heading"><div class="sync-intro"><span class="eyebrow">Available anywhere</span><h1>Cloud sync</h1><p>Your planner is protected by your private OG Sync key. The trusted Mac imports school data; this browser receives normalized assignments and grades.</p></div><button class="button button-quiet" data-cloud-refresh>Refresh now</button></div>
+      <div class="page-heading"><div class="sync-intro"><span class="eyebrow">Available anywhere</span><h1>Cloud sync</h1><p>Use your OG Sync key to load the same assignments and grades on this device. Your Mac sends school updates to this private workspace.</p></div><button class="button button-quiet" data-cloud-refresh>Refresh now</button></div>
       <div class="sync-grid">
         ${cloudProviderCard("google", "G", "Google Classroom")}
         ${cloudProviderCard("blackbaud", "B", "My Oak Grove · Blackbaud")}
-        <article class="card integration-card"><div class="integration-top"><span class="integration-logo">☁</span><span class="status-pill connected">Connected</span></div><h2>OG Sync cloud</h2><p>This device saves planner changes to your private Vercel storage. School passwords and provider cookies never leave your Mac.</p><button class="button button-quiet" data-cloud-disconnect>Change sync key</button></article>
-        <article class="card integration-card"><div class="integration-top"><span class="integration-logo">↕</span><span class="status-pill">Backup</span></div><h2>Export or restore</h2><p>Keep a portable JSON backup, or restore one and send it to your cloud workspace.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="button button-dark" data-export>Export data</button><button class="button button-quiet" data-import>Import backup</button></div></article>
-        <article class="card integration-card"><div class="integration-top"><span class="integration-logo">⌫</span><span class="status-pill">All devices</span></div><h2>Clear assignments & history</h2><p>Remove every task and focus session from OG Sync while keeping your class setup and profile.</p><button class="button button-quiet danger-link" data-clear-work>Clear work data</button></article>
-        <aside class="card privacy-card"><span class="integration-logo">${icons.shield}</span><div><h3>Your school credentials are not in Vercel.</h3><p>The Mac helper keeps Google and Blackbaud sessions in .data/scraper-profile and uploads only classes, assignments, published grades, and sync timestamps.</p></div></aside>
+        <article class="card integration-card"><div class="integration-top"><span class="integration-logo">☁</span><span class="status-pill connected">Connected</span></div><h2>OG Sync cloud</h2><p>Planner changes from this device are saved to your Vercel storage. Google and Blackbaud sign-in data stays on your Mac.</p><button class="button button-quiet" data-cloud-disconnect>Change sync key</button></article>
+        <article class="card integration-card"><div class="integration-top"><span class="integration-logo">↕</span><span class="status-pill">Backup</span></div><h2>Export or restore</h2><p>Download a JSON backup, or restore one to this cloud workspace.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="button button-dark" data-export>Export data</button><button class="button button-quiet" data-import>Import backup</button></div></article>
+        <article class="card integration-card"><div class="integration-top"><span class="integration-logo">⌫</span><span class="status-pill">All devices</span></div><h2>Clear assignments & history</h2><p>Delete every task and focus session from OG Sync. Your classes and profile will stay.</p><button class="button button-quiet danger-link" data-clear-work>Clear work data</button></article>
+        <aside class="card privacy-card"><span class="integration-logo">${icons.shield}</span><div><h3>School sign-in stays on your Mac.</h3><p>The helper keeps Google and Blackbaud sessions in .data/scraper-profile. It sends only classes, assignments, published grades, and sync times to Vercel.</p></div></aside>
       </div>
     </section>`;
     return;
   }
   app.innerHTML = `<section class="page">
-    <div class="page-heading"><div class="sync-intro"><span class="eyebrow">Bring school into focus</span><h1>Browser import</h1><p>Sign in through a dedicated browser window, then OG Sync reads the assignments shown to your student account. Repeated imports update existing work instead of duplicating it.</p></div></div>
+    <div class="page-heading"><div class="sync-intro"><span class="eyebrow">Bring school into focus</span><h1>Browser import</h1><p>Sign in to Google Classroom and My Oak Grove in the browser window opened by OG Sync. Each sync updates matching assignments, so it will not create copies.</p></div></div>
     <div class="sync-grid">
-      ${integrationCard("google", "G", "Google Classroom", "Read assignments from Classroom’s To-do views using a separate browser profile where you sign in normally.")}
-      ${integrationCard("blackbaud", "B", "My Oak Grove · Blackbaud", "Read assignments currently shown in My Day → Assignment Center using your signed-in browser session.")}
-      <article class="card integration-card"><div class="integration-top"><span class="integration-logo">↕</span><span class="status-pill">Works now</span></div><h2>Backup & transfer</h2><p>Export your local workspace as JSON or restore a previous OG Sync backup on this device.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="button button-dark" data-export>Export data</button><button class="button button-quiet" data-import>Import backup</button></div></article>
-      <article class="card integration-card"><div class="integration-top"><span class="integration-logo">⌫</span><span class="status-pill">Local data</span></div><h2>Clear assignments & history</h2><p>Remove every task and focus session while keeping your class setup and profile.</p><button class="button button-quiet danger-link" data-clear-work>Clear work data</button></article>
-      <aside class="card privacy-card"><span class="integration-logo">${icons.shield}</span><div><h3>Passwords stay on the official sign-in pages.</h3><p>OG Sync stores the dedicated browser session locally in .data/scraper-profile. It never asks for, receives, logs, or saves your Google or Blackbaud password.</p></div></aside>
+      ${integrationCard("google", "G", "Google Classroom", "Import assignments from Classroom’s To-do pages with your saved browser session.")}
+      ${integrationCard("blackbaud", "B", "My Oak Grove · Blackbaud", "Import assignments and grades from My Day and the gradebook with your saved browser session.")}
+      <article class="card integration-card"><div class="integration-top"><span class="integration-logo">↕</span><span class="status-pill">Works now</span></div><h2>Backup & transfer</h2><p>Download a JSON backup, or restore one on this device.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="button button-dark" data-export>Export data</button><button class="button button-quiet" data-import>Import backup</button></div></article>
+      <article class="card integration-card"><div class="integration-top"><span class="integration-logo">⌫</span><span class="status-pill">Local data</span></div><h2>Clear assignments & history</h2><p>Delete every task and focus session. Your classes and profile will stay.</p><button class="button button-quiet danger-link" data-clear-work>Clear work data</button></article>
+      <aside class="card privacy-card"><span class="integration-logo">${icons.shield}</span><div><h3>School passwords stay on the sign-in pages.</h3><p>The helper saves its signed-in browser session in .data/scraper-profile. It does not collect or save your Google or Blackbaud password.</p></div></aside>
     </div>
   </section>`;
   refreshSyncStatus();
@@ -692,7 +692,7 @@ function renderSync() {
 function cloudProviderCard(provider, mark, title) {
   const result = state.sync?.[syncStateKeys[provider]];
   const connected = Number.isFinite(Date.parse(result?.lastSyncedAt || ""));
-  return `<article class="card integration-card"><div class="integration-top"><span class="integration-logo ${provider}">${mark}</span><span class="status-pill ${connected ? "connected" : ""}">${connected ? "Synced by Mac" : "Waiting for Mac"}</span></div><h2>${title}</h2><p>${connected ? lastSyncText(provider) : "Run the OG Sync helper on your trusted Mac once to send this service’s school data to the cloud."}</p></article>`;
+  return `<article class="card integration-card"><div class="integration-top"><span class="integration-logo ${provider}">${mark}</span><span class="status-pill ${connected ? "connected" : ""}">${connected ? "Synced by Mac" : "Waiting for Mac"}</span></div><h2>${title}</h2><p>${connected ? lastSyncText(provider) : "Run the OG Sync helper on your Mac to send this school data to the cloud."}</p></article>`;
 }
 
 function integrationCard(provider, mark, title, description) {

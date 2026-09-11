@@ -4,11 +4,11 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f8f8f5" />
-    <meta name="description" content="A calm, local-first school planner." />
+    <meta name="description" content="A personal planner for classes, assignments, grades, and focus sessions." />
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="icon" href="./icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="./styles.css?v=21" />
-    <title>OG Sync — School planner</title>
+    <link rel="stylesheet" href="./styles.css?v=22" />
+    <title>OG Sync | School planner</title>
   </head>
   <body>
     <div class="app-shell">
@@ -17,7 +17,7 @@
           <span class="brand-mark" aria-hidden="true">
             <svg viewBox="0 0 24 24"><path d="M7 3.8h8.2A3.8 3.8 0 0 1 19 7.6V20l-7-3.5L5 20V5.8A2 2 0 0 1 7 3.8Z"/><path d="m9 9 2 2 4-4"/></svg>
           </span>
-          <span>OG Sync<small>School, sorted.</small></span>
+          <span>OG Sync<small>Schoolwork in one place.</small></span>
         </a>
 
         <nav class="nav-list">
@@ -71,7 +71,7 @@
 
     <dialog class="modal" id="task-modal">
       <form method="dialog" id="task-form">
-        <div class="modal-header"><div><span class="eyebrow">New item</span><h2>Add to your plan</h2></div><button class="icon-button" value="cancel" aria-label="Close" type="submit">×</button></div>
+        <div class="modal-header"><div><span class="eyebrow">New item</span><h2>Add a task</h2></div><button class="icon-button" value="cancel" aria-label="Close" type="submit">×</button></div>
         <label>What needs doing?<input id="task-title" name="title" placeholder="e.g. Finish lab questions" required maxlength="100" autocomplete="off" /></label>
         <div class="form-grid">
           <label>Class<select id="task-course" name="course"></select></label>
@@ -87,7 +87,7 @@
 
     <dialog class="modal modal-small" id="profile-modal">
       <form method="dialog" id="profile-form">
-        <div class="modal-header"><div><span class="eyebrow">Your workspace</span><h2>Personalize OG Sync</h2></div><button class="icon-button" value="cancel" aria-label="Close" type="submit">×</button></div>
+        <div class="modal-header"><div><span class="eyebrow">Your workspace</span><h2>Edit your profile</h2></div><button class="icon-button" value="cancel" aria-label="Close" type="submit">×</button></div>
         <label>Your first name<input id="profile-name" name="name" required maxlength="30" autocomplete="given-name" /></label>
         <div class="modal-actions"><button class="button button-quiet" value="cancel" type="submit">Cancel</button><button class="button button-dark" value="default" type="submit">Save</button></div>
       </form>
@@ -116,7 +116,7 @@
           <label><input type="checkbox" name="days" value="5" /><span>Fri</span></label>
           <label><input type="checkbox" name="days" value="6" /><span>Sat</span></label>
         </div></fieldset>
-        <p class="form-note">Choose days and a time to show this class in “Next class.” You can leave them blank until you know your schedule.</p>
+        <p class="form-note">Add meeting days and a start time to show this class under “Next class.” You can fill these in later.</p>
         <div class="modal-actions"><button class="button button-quiet" value="cancel" type="submit">Cancel</button><button class="button button-dark" value="default" type="submit">Save class</button></div>
       </form>
     </dialog>
@@ -129,8 +129,8 @@
           <label>Teacher instructions<textarea id="task-teacher-instructions" name="teacherInstructions" rows="5" maxlength="10000"></textarea></label>
           <label>Your notes<textarea id="task-notes" name="notes" rows="5" maxlength="5000" placeholder="Key ideas, questions, or what to do next"></textarea></label>
         </div>
-        <section class="detail-section"><div class="detail-section-title"><div><h3>Subtasks</h3><p>Break the assignment into finishable steps.</p></div></div><div class="inline-entry"><input id="subtask-title" maxlength="120" placeholder="Add a step" autocomplete="off" /><button class="button button-quiet" id="add-subtask" type="button">Add</button></div><div id="subtask-list" class="detail-list"></div></section>
-        <section class="detail-section"><div class="detail-section-title"><div><h3>Links & attachments</h3><p>Add Google Docs, PDFs, study guides, or other secure links.</p></div></div><div class="attachment-entry"><input id="attachment-name" maxlength="120" placeholder="Name" autocomplete="off" /><input id="attachment-url" type="url" maxlength="2000" placeholder="https://…" autocomplete="off" /><button class="button button-quiet" id="add-attachment" type="button">Add</button></div><div id="attachment-list" class="detail-list"></div></section>
+        <section class="detail-section"><div class="detail-section-title"><div><h3>Subtasks</h3><p>Split this assignment into smaller steps.</p></div></div><div class="inline-entry"><input id="subtask-title" maxlength="120" placeholder="Add a step" autocomplete="off" /><button class="button button-quiet" id="add-subtask" type="button">Add</button></div><div id="subtask-list" class="detail-list"></div></section>
+        <section class="detail-section"><div class="detail-section-title"><div><h3>Links & attachments</h3><p>Add links to documents, PDFs, or study guides.</p></div></div><div class="attachment-entry"><input id="attachment-name" maxlength="120" placeholder="Name" autocomplete="off" /><input id="attachment-url" type="url" maxlength="2000" placeholder="https://…" autocomplete="off" /><button class="button button-quiet" id="add-attachment" type="button">Add</button></div><div id="attachment-list" class="detail-list"></div></section>
         <div class="modal-actions"><a class="button button-quiet hidden" id="task-source-link" target="_blank" rel="noreferrer">Open school page ↗</a><button class="button button-quiet" value="cancel" type="submit">Cancel</button><button class="button button-dark" value="save" type="submit">Save details</button></div>
       </form>
     </dialog>
@@ -138,7 +138,7 @@
     <dialog class="modal modal-small" id="schedule-modal">
       <form method="dialog" id="schedule-form">
         <div class="modal-header"><div><span class="eyebrow">Rotation setup</span><h2>Configure your school cycle</h2></div><button class="icon-button" value="cancel" aria-label="Close" type="submit">×</button></div>
-        <p class="form-note cloud-note">Name the two rotation days and choose a date known to use the first one. Weekends are skipped automatically.</p>
+        <p class="form-note cloud-note">Name both rotation days, then choose a date that uses the first one. OG Sync skips weekends.</p>
         <div class="form-grid"><label>First day name<input id="rotation-label-a" name="labelA" required maxlength="10" /></label><label>Second day name<input id="rotation-label-b" name="labelB" required maxlength="10" /></label></div>
         <label style="margin-top:15px">Date using the first day<input id="rotation-anchor" name="anchorDate" type="date" required /></label>
         <div class="modal-actions"><button class="button button-quiet" value="cancel" type="submit">Cancel</button><button class="button button-dark" value="save" type="submit">Save rotation</button></div>
@@ -155,17 +155,17 @@
     <dialog class="modal modal-small" id="cloud-modal">
       <form method="dialog" id="cloud-form">
         <div class="modal-header"><div><span class="eyebrow">Private cloud</span><h2>Connect this device</h2></div></div>
-        <p class="form-note cloud-note">Enter the OG Sync key created during deployment. This is not your Google, Blackbaud, or school password.</p>
+        <p class="form-note cloud-note">Enter the sync key from your Vercel setup. Do not enter a Google, Blackbaud, or school password.</p>
         <label>OG Sync key<input id="cloud-key" name="key" type="password" required minlength="32" maxlength="200" autocomplete="off" spellcheck="false" /></label>
         <p class="form-error" id="cloud-key-error" role="alert"></p>
-        <div class="modal-actions"><button class="button button-dark" type="submit">Connect securely</button></div>
+        <div class="modal-actions"><button class="button button-dark" type="submit">Connect device</button></div>
       </form>
     </dialog>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <input id="import-input" type="file" accept="application/json,.json" hidden />
-    <script src="./sync.js?v=21"></script>
-    <script src="./school.js?v=21"></script>
-    <script src="./app.js?v=21"></script>
+    <script src="./sync.js?v=22"></script>
+    <script src="./school.js?v=22"></script>
+    <script src="./app.js?v=22"></script>
   </body>
 </html>

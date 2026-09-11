@@ -1,7 +1,7 @@
 {
   "name": "OG Sync School Planner",
   "short_name": "OG Sync",
-  "description": "A calm, local-first school planner.",
+  "description": "A personal planner for classes, assignments, grades, and focus sessions.",
   "start_url": "./#dashboard",
   "display": "standalone",
   "background_color": "#f7f7f3",
