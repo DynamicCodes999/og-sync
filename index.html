@@ -7,7 +7,7 @@
     <meta name="description" content="A calm, local-first school planner." />
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="icon" href="./icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="./styles.css?v=17" />
+    <link rel="stylesheet" href="./styles.css?v=20" />
     <title>OG Sync — School planner</title>
   </head>
   <body>
@@ -57,6 +57,7 @@
           <div class="mobile-brand"><span class="brand-mark"><svg viewBox="0 0 24 24"><path d="M7 3.8h8.2A3.8 3.8 0 0 1 19 7.6V20l-7-3.5L5 20V5.8A2 2 0 0 1 7 3.8Z"/><path d="m9 9 2 2 4-4"/></svg></span><strong>OG Sync</strong></div>
           <span class="topbar-date" id="topbar-date"></span>
           <div class="topbar-actions">
+            <button class="icon-button" id="theme-button" type="button" aria-label="Use dark mode" title="Use dark mode"></button>
             <button class="icon-button" id="search-button" type="button" aria-label="Search tasks">
               <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
             </button>
@@ -173,8 +174,8 @@
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <input id="import-input" type="file" accept="application/json,.json" hidden />
-    <script src="./sync.js?v=17"></script>
-    <script src="./school.js?v=17"></script>
-    <script src="./app.js?v=17"></script>
+    <script src="./sync.js?v=20"></script>
+    <script src="./school.js?v=20"></script>
+    <script src="./app.js?v=20"></script>
   </body>
 </html>

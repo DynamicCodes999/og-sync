@@ -61,6 +61,16 @@ test("sync is idempotent and merges the same assignment across providers", () =>
   assert.equal(state.tasks.length, 2);
 });
 
+test("decodes HTML entities in imported assignment titles", () => {
+  const state = workspace();
+  mergeImported(state, {
+    provider: "blackbaud",
+    courses: [{ sourceId: "chemistry", name: "Algebra 2" }],
+    assignments: [{ sourceId: "work-1", courseSourceId: "chemistry", title: "Electron Configuration (long&amp;short)", due: "2026-09-21" }]
+  }, () => "1");
+  assert.equal(state.tasks[0].title, "Electron Configuration (long&short)");
+});
+
 test("a provider ID survives due-date edits while different classes stay separate", () => {
   const state = workspace();
   let id = 0;

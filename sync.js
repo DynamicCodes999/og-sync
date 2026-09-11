@@ -19,6 +19,15 @@
       .replace(/\s+/g, " ");
   }
 
+  function decodeEntities(value) {
+    const named = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
+    return String(value || "").replace(/&(#x[\da-f]+|#\d+|amp|lt|gt|quot|apos|nbsp);/gi, (match, entity) => {
+      if (entity[0] !== "#") return named[entity.toLowerCase()] || match;
+      const code = Number.parseInt(entity[1].toLowerCase() === "x" ? entity.slice(2) : entity.slice(1), entity[1].toLowerCase() === "x" ? 16 : 10);
+      return Number.isInteger(code) && code <= 0x10ffff ? String.fromCodePoint(code) : match;
+    });
+  }
+
   function classKey(value) {
     return normalizeText(value)
       .replace(/\b(period|section|block)\s*[a-z0-9-]+\b/g, "")
@@ -76,7 +85,7 @@
     const teacherInstructions = String(remote.description || "").slice(0, 10000);
     const attachments = Array.isArray(remote.attachments) ? remote.attachments.slice(0, 20).filter(item => item && /^[\w-]{1,64}$/.test(item.id || "") && String(item.name || "").length <= 120 && /^https:\/\//.test(item.url || "")).map(item => ({ id: item.id, name: String(item.name), url: item.url })) : [];
     return {
-      title: String(remote.title || "Untitled assignment").trim().slice(0, 100),
+      title: decodeEntities(remote.title || "Untitled assignment").trim().slice(0, 100),
       courseId: course.id,
       due,
       time,
@@ -153,7 +162,13 @@
       state.tombstones.sources ||= {};
       state.tombstones.sources[rejectedSource] = new Date().toISOString();
     }
-    return before - state.tasks.length;
+    let changed = before - state.tasks.length;
+    for (const task of state.tasks) {
+      if (typeof task.title !== "string") continue;
+      const title = decodeEntities(task.title);
+      if (title !== task.title) { task.title = title; changed++; }
+    }
+    return changed;
   }
 
   return { normalizeText, classKey, canonicalKey, mergeImported, migrateState, sourceKey };

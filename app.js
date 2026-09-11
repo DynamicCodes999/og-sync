@@ -1,6 +1,8 @@
 const STORE_KEY = "daymark-state-v2";
 const CLOUD_KEY_STORE = "daymark-cloud-key-v1";
 const FOCUS_PLAN_STORE = "daymark-focus-plan-v1";
+const THEME_STORE = "og-sync-theme-v1";
+const TIMER_ALERT_STORE = "og-sync-timer-alert-v1";
 const DAY = 86_400_000;
 const HOSTED = !["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
 
@@ -10,8 +12,18 @@ const icons = {
   trash: '<svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3m3 0-1 14H7L6 7m4 4v6m4-6v6"/></svg>',
   left: '<svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>',
   right: '<svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>',
+  moon: '<svg viewBox="0 0 24 24"><path d="M20 15.2A8.5 8.5 0 0 1 8.8 4 8.5 8.5 0 1 0 20 15.2Z"/></svg>',
+  sun: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+  bell: '<svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg>',
+  bellOff: '<svg viewBox="0 0 24 24"><path d="m3 3 18 18M18 8a6 6 0 0 0-9.3-5M6 8c0 7-3 7-3 9h14M10 21h4"/></svg>',
   shield: '<svg viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.6 2.8 8.2 7 10 4.2-1.8 7-5.4 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></svg>'
 };
+
+let theme = localStorage.getItem(THEME_STORE) || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+if (!["light", "dark"].includes(theme)) theme = "light";
+document.documentElement.dataset.theme = theme;
+let timerAlerts = localStorage.getItem(TIMER_ALERT_STORE) !== "off";
+let timerAudio;
 
 function dateKey(date = new Date()) {
   const y = date.getFullYear();
@@ -197,6 +209,67 @@ function showToast(message) {
   toastTimer = setTimeout(() => toast.classList.remove("show"), 3000);
 }
 
+function updateThemeButton() {
+  const button = document.querySelector("#theme-button");
+  if (!button) return;
+  const nextTheme = theme === "dark" ? "light" : "dark";
+  button.innerHTML = theme === "dark" ? icons.sun : icons.moon;
+  button.setAttribute("aria-label", `Use ${nextTheme} mode`);
+  button.title = `Use ${nextTheme} mode`;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "dark" ? "#111310" : "#f7f7f3");
+}
+
+function toggleTheme() {
+  theme = theme === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = theme;
+  localStorage.setItem(THEME_STORE, theme);
+  updateThemeButton();
+}
+
+function prepareTimerAudio() {
+  if (!timerAlerts) return null;
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContext) return null;
+  timerAudio ||= new AudioContext();
+  if (timerAudio.state === "suspended") timerAudio.resume().catch(() => {});
+  return timerAudio;
+}
+
+function playTimerBell() {
+  const context = prepareTimerAudio();
+  if (!context) return;
+  const start = context.currentTime;
+  [0, .16].forEach((delay, index) => {
+    const tone = context.createOscillator();
+    const volume = context.createGain();
+    tone.type = "sine";
+    tone.frequency.value = index ? 880 : 660;
+    volume.gain.setValueAtTime(0.0001, start + delay);
+    volume.gain.exponentialRampToValueAtTime(.2, start + delay + .015);
+    volume.gain.exponentialRampToValueAtTime(0.0001, start + delay + .22);
+    tone.connect(volume).connect(context.destination);
+    tone.start(start + delay);
+    tone.stop(start + delay + .23);
+  });
+}
+
+function announceTimerTransition(title, body) {
+  if (!timerAlerts) return;
+  playTimerBell();
+  if (document.hidden && "Notification" in window && Notification.permission === "granted") new Notification(title, { body, icon: "./icon.svg" });
+}
+
+async function toggleTimerAlerts() {
+  timerAlerts = !timerAlerts;
+  localStorage.setItem(TIMER_ALERT_STORE, timerAlerts ? "on" : "off");
+  if (timerAlerts) {
+    prepareTimerAudio();
+    if ("Notification" in window && Notification.permission === "default") await Notification.requestPermission().catch(() => {});
+  }
+  if (currentPage() === "focus") renderFocus();
+  showToast(timerAlerts ? "Timer bell is on." : "Timer bell is off.");
+}
+
 function cloudHeaders() {
   return { Accept: "application/json", Authorization: `Bearer ${cloud.key}`, "Content-Type": "application/json" };
 }
@@ -283,9 +356,15 @@ async function pullCloud({ quiet = false } = {}) {
     }
     if (!response.ok || !validState(result.state)) throw new Error(result.error || "Cloud sync failed");
     state = ensureTombstones(result.state);
+    const migrated = window.DaymarkSync.migrateState(state);
     cloud.revision = result.revision || null;
     cloud.ready = true;
     localStorage.setItem(STORE_KEY, JSON.stringify(state));
+    if (migrated) {
+      cloud.dirty = true;
+      clearTimeout(cloud.timer);
+      cloud.timer = setTimeout(pushCloudState, 0);
+    }
     setCloudLabel("Cloud synced");
     render();
     return true;
@@ -399,37 +478,30 @@ function renderDashboard() {
   const assessments = openTasks.filter(isAssessment);
   const approachingTests = assessments.filter(task => task.due >= today && task.due <= addDays(14));
   const regularTasks = openTasks.filter(task => !isAssessment(task));
-  const subjectGroups = [...new Set(regularTasks.map(task => task.courseId))].map(courseId => ({ course: courseFor(courseId), tasks: regularTasks.filter(task => task.courseId === courseId) }));
+  const subjectGroups = taskGroupsByCourse(regularTasks);
   const todayClasses = scheduleForDate(new Date());
   const rotation = rotationForDate(today);
   const workload = openTasks.filter(task => task.due && task.due <= today).reduce((sum, task) => sum + (task.estimate || 25), 0);
   const missingWork = openTasks.filter(task => window.DaymarkSchool.isSyncedMissingWork(task, today));
   const next = nextClass();
-  const focusTask = openTasks[0];
-  const firstName = state.profile.name ? `, ${e(state.profile.name)}` : "";
   const classNames = [...new Set(todayClasses.map(item => item.course.name))];
+  const todayLabel = new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+  const nextClassText = next ? `${next.course.name} · ${next.offset === 0 ? "today" : next.offset === 1 ? "tomorrow" : next.starts.toLocaleDateString(undefined, { weekday: "long" })} ${formatTime(next.slot.start)}` : "No upcoming class scheduled";
 
   app.innerHTML = `<section class="page home-page">
-    <div class="page-heading"><div><h1>${greeting()}${firstName}.</h1><p>${openTasks.length ? `${openTasks.length} open ${openTasks.length === 1 ? "item" : "items"}, organized by class so you can see what matters.` : "Everything is handled. Enjoy the clear desk."}</p></div></div>
-    <article class="card morning-brief"><div class="morning-brief-head"><div><h2>Morning brief</h2><p>${new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}${rotation ? ` · ${e(rotation)} day` : ""}</p></div><span>${workload} min workload</span></div><div class="morning-brief-grid">
-      <div><span>Today’s classes</span><strong>${classNames.length ? e(classNames.join(" · ")) : "No classes scheduled"}</strong></div>
-      <div><span>Work due</span><strong>${dueToday ? `${dueToday} ${dueToday === 1 ? "item" : "items"}` : "Nothing due today"}${overdue ? ` · ${overdue} overdue` : ""}</strong></div>
-      <div><span>Tests approaching</span><strong>${approachingTests.length ? `${e(approachingTests[0].title)} · ${relativeDate(approachingTests[0].due)}` : "None in the next 14 days"}</strong></div>
-    </div></article>
+    <div class="page-heading today-heading"><div><h1>Today</h1><p>${todayLabel}${rotation ? ` · ${e(rotation)} day` : ""}</p></div><span class="today-open-count">${openTasks.length} open</span></div>
+    <section class="card today-glance" aria-label="Today at a glance">
+      <div><span>School day</span><strong>${classNames.length ? `${classNames.length} ${classNames.length === 1 ? "class" : "classes"}` : "No classes today"}</strong><small>${e(nextClassText)}</small></div>
+      <div><span>Due</span><strong>${dueToday} today${overdue ? ` · ${overdue} overdue` : ""}</strong><small>${missingWork.length ? `${missingWork.length} synced ${missingWork.length === 1 ? "item needs" : "items need"} attention` : "No missing synced work"}</small></div>
+      <div><span>Next assessment</span><strong>${approachingTests.length ? e(approachingTests[0].title) : "Nothing approaching"}</strong><small>${approachingTests.length ? relativeDate(approachingTests[0].due) : "Next 14 days are clear"}</small></div>
+      <div><span>Workload</span><strong>${workload} min</strong><small>Due or overdue today</small></div>
+    </section>
     ${missingWork.length ? `<aside class="missing-watchdog" role="status"><span class="missing-watchdog-mark">!</span><div><strong>${missingWork.length} synced ${missingWork.length === 1 ? "item needs" : "items need"} attention</strong><p>${e(missingWork[0].title)}${missingWork.length > 1 ? ` and ${missingWork.length - 1} more` : ""} ${missingWork.length === 1 ? "is" : "are"} past due and still incomplete.</p></div><button class="text-link" data-go="planner">Review →</button></aside>` : ""}
-    <div class="home-layout">
-      <div class="home-main">
-        ${assessments.length ? `<article class="card home-assessment-card"><div class="card-header"><div><h2>Tests & quizzes</h2><p>High-priority assessments stay above everyday work</p></div><span class="home-open-count">${assessments.length} upcoming</span></div>${taskRows(assessments)}</article>` : ""}
-        <article class="card home-subject-card"><div class="card-header"><div><h2>To-dos by subject</h2><p>Your next assignments, grouped by class</p></div><button class="text-link" data-go="planner">Open planner →</button></div>
-          ${subjectGroups.length ? subjectGroups.map(group => `<section class="home-subject"><div class="home-subject-heading"><div><span class="course-dot" style="--course-color:${group.course.color}"></span><h3>${e(group.course.name)}</h3></div><span>${group.tasks.length} ${group.tasks.length === 1 ? "item" : "items"}</span></div>${taskRows(group.tasks.slice(0, 3), false, true)}${group.tasks.length > 3 ? `<button class="home-subject-more" data-go="planner">+${group.tasks.length - 3} more in Planner</button>` : ""}</section>`).join("") : '<div class="empty-state"><span class="empty-icon">✓</span><h3>No regular assignments</h3><p>Your subject lists are clear.</p></div>'}
-        </article>
-        <article class="card home-week-card"><h3>This week</h3><div><span>Overdue</span><strong class="${overdue ? "urgent" : ""}">${overdue}</strong></div><div><span>Due today</span><strong>${dueToday}</strong></div><div><span>Next 7 days</span><strong>${dueSoon}</strong></div></article>
-      </div>
-      <aside class="home-sidebar">
-        <article class="card home-focus-card"><span class="home-card-label">Start here</span><h2>${focusTask ? e(focusTask.title) : "You’re caught up"}</h2><p>${focusTask ? `${e(courseFor(focusTask.courseId).name)} · ${focusTask.estimate || 25} min · ${relativeDate(focusTask.due)}` : "There are no open assignments waiting for you."}</p>${focusTask ? `<button class="button button-dark" data-focus-task="${focusTask.id}">Start focus session ${icons.arrow}</button>` : ""}</article>
-        ${next ? `<article class="card home-next-card" style="--next-color:${next.course.color}"><div><span class="home-card-label">Next class${next.slot.rotation ? ` · ${e(next.slot.rotation)}` : ""}</span><h3>${e(next.course.name)}</h3><p>${e([next.slot.period, next.course.teacher, next.course.room].filter(Boolean).join(" · ") || "Schedule details")}</p></div><div class="home-next-time"><strong>${next.offset === 0 ? "Today" : next.offset === 1 ? "Tomorrow" : next.starts.toLocaleDateString(undefined, { weekday: "long" })}, ${formatTime(next.slot.start)}</strong><span>Ends ${formatTime(next.slot.end)}</span></div></article>` : `<article class="card home-next-card empty"><div><span class="home-card-label">Next class</span><h3>Add your schedule</h3><p>See the next period, room, and start time here.</p></div><button class="text-link" data-go="classes">Set up classes →</button></article>`}
-      </aside>
-    </div>
+    <article class="card today-work"><div class="card-header"><div><h2>Your work</h2><p>Assessments first, then assignments by class</p></div><button class="text-link" data-go="planner">Open planner →</button></div>
+      ${assessments.length ? `<section class="today-assessments"><div class="today-section-title"><h3>Tests & quizzes</h3><span>${assessments.length}</span></div>${taskRows(assessments.slice(0, 4))}</section>` : ""}
+      ${subjectGroups.length ? `<div class="today-subject-grid">${subjectGroups.map(group => `<section class="today-subject"><div class="home-subject-heading"><div><span class="course-dot" style="--course-color:${group.course.color}"></span><h3>${e(group.course.name)}</h3></div><span>${group.items.length}</span></div>${taskRows(group.items.slice(0, 3), false, true)}${group.items.length > 3 ? `<button class="home-subject-more" data-go="planner">+${group.items.length - 3} more</button>` : ""}</section>`).join("")}</div>` : assessments.length ? "" : '<div class="empty-state"><span class="empty-icon">✓</span><h3>You’re caught up</h3><p>There are no open assignments waiting for you.</p></div>'}
+      <footer class="today-work-footer"><span>${overdue} overdue · ${dueToday} due today · ${dueSoon} in the next 7 days</span>${openTasks[0] ? `<button class="text-link" data-focus-task="${openTasks[0].id}">Focus on the next task →</button>` : ""}</footer>
+    </article>
   </section>`;
 }
 
@@ -465,20 +537,12 @@ function renderCalendar() {
   </section>`;
 }
 
-function plannerGroups(tasks) {
-  const groups = [
-    { label: "Overdue", test: task => dueTimestamp(task) < Date.now() && task.due !== dateKey() && !task.completed },
-    { label: "Today", test: task => task.due === dateKey() && !task.completed },
-    { label: "Tomorrow", test: task => task.due === addDays(1) && !task.completed },
-    { label: "Later", test: task => task.due && task.due > addDays(1) && !task.completed },
-    { label: "No due date", test: task => !task.due && !task.completed },
-    { label: "Completed", test: task => task.completed }
-  ];
-  const used = new Set();
-  return groups.map(group => {
-    let items = tasks.filter(task => group.test(task) && !used.has(task.id));
-    items.forEach(task => used.add(task.id));
-    return { ...group, items: sortTasks(items) };
+function taskGroupsByCourse(tasks) {
+  const courseIds = [...state.courses.map(course => course.id), "personal"];
+  return courseIds.map(courseId => {
+    const items = sortTasks(tasks.filter(task => task.courseId === courseId));
+    items.sort((a, b) => Number(isAssessment(b)) - Number(isAssessment(a)));
+    return { course: courseFor(courseId), items };
   }).filter(group => group.items.length);
 }
 
@@ -488,11 +552,11 @@ function renderPlanner() {
   if (plannerView === "today") tasks = tasks.filter(task => task.due && task.due <= dateKey() && !task.completed);
   if (plannerView === "week") tasks = tasks.filter(task => task.due >= dateKey() && task.due <= addDays(7) && !task.completed);
   if (plannerView === "done") tasks = tasks.filter(task => task.completed);
-  const groups = plannerGroups(tasks);
+  const groups = taskGroupsByCourse(tasks);
   app.innerHTML = `<section class="page">
-    <div class="page-heading"><div><span class="eyebrow">Plan without the clutter</span><h1>Planner</h1><p>Keep the next action visible and everything else out of your head.</p></div><button class="button button-dark" data-open-task>+ Add task</button></div>
+    <div class="page-heading"><div><h1>Planner</h1><p>Assignments grouped by class, with assessments first and everything else by due date.</p></div><button class="button button-dark" data-open-task>+ Add task</button></div>
     <div class="planner-toolbar"><div class="segmented">${[["open","Open"],["today","Today"],["week","Next 7 days"],["done","Completed"]].map(([value,label]) => `<button class="segment ${plannerView === value ? "active" : ""}" data-planner-view="${value}">${label}</button>`).join("")}</div><select class="filter-select" id="planner-course" aria-label="Filter by class"><option value="all">All classes</option>${state.courses.map(course => `<option value="${course.id}" ${plannerCourse === course.id ? "selected" : ""}>${e(course.name)}</option>`).join("")}</select></div>
-    ${groups.length ? groups.map(group => `<article class="card planner-group"><div class="planner-group-title"><h2>${group.label}</h2><span>${group.items.length} ${group.items.length === 1 ? "item" : "items"}</span></div>${taskRows(group.items, true)}</article>`).join("") : '<article class="card empty-state"><span class="empty-icon">✓</span><h3>This view is clear</h3><p>Change the filter or add a new task.</p></article>'}
+    ${groups.length ? `<div class="card planner-board">${groups.map(group => `<section class="planner-course"><div class="planner-group-title"><div><span class="course-dot" style="--course-color:${group.course.color}"></span><h2>${e(group.course.name)}</h2></div><span>${group.items.length} ${group.items.length === 1 ? "item" : "items"}</span></div>${taskRows(group.items, true, true)}</section>`).join("")}</div>` : '<article class="card empty-state"><span class="empty-icon">✓</span><h3>This view is clear</h3><p>Change the filter or add a new task.</p></article>'}
   </section>`;
 }
 
@@ -512,7 +576,7 @@ function renderFocus() {
   const totalToday = state.sessions.filter(session => session.date === dateKey()).reduce((sum, session) => sum + session.minutes, 0);
   const open = sortTasks(state.tasks.filter(task => !task.completed));
   app.innerHTML = `<section class="page">
-    <div class="page-heading"><div><span class="eyebrow">One thing at a time</span><h1>Focus</h1><p>Choose your work, break, and block count. OG Sync handles every transition.</p></div></div>
+    <div class="page-heading"><div><h1>Focus</h1><p>Choose your work, break, and block count. OG Sync handles every transition.</p></div><button class="button button-quiet timer-alert-button" data-timer-alert aria-pressed="${timerAlerts}">${timerAlerts ? icons.bell : icons.bellOff}<span>${timerAlerts ? "Bell on" : "Bell off"}</span></button></div>
     <div class="focus-layout">
       <article class="card timer-card"><div class="timer-inner">
         <div class="timer-plan" aria-label="Focus cycle settings">
@@ -565,22 +629,24 @@ function formatPoints(value) {
 }
 
 function renderGrades() {
+  const coursesWithGrades = state.courses.filter(course => state.gradeItems.some(item => item.courseId === course.id));
   app.innerHTML = `<section class="page">
-    <div class="page-heading"><div><span class="eyebrow">Know where you stand</span><h1>Grade tracker</h1><p>Track earned points and calculate what you need on the next assignment or test.</p></div><button class="button button-dark" data-add-grade>+ Add graded item</button></div>
+    <div class="page-heading"><div><h1>Grade tracker</h1><p>Track earned points and calculate what you need on the next assignment or test.</p></div><button class="button button-dark" data-add-grade>+ Add graded item</button></div>
     <aside class="card grade-note"><span class="integration-logo">%</span><div><h3>Points-based calculation</h3><p>OG Sync uses total points earned ÷ total points possible. If a teacher weights categories, use the official gradebook as the final source.</p></div></aside>
-    <div class="grades-grid">${state.courses.map(course => {
+    ${coursesWithGrades.length ? `<div class="grades-grid">${coursesWithGrades.map(course => {
       const items = state.gradeItems.filter(item => item.courseId === course.id).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
       const summary = window.DaymarkSchool.gradeSummary(items);
       const percent = summary.percent === null ? null : Math.round(summary.percent * 10) / 10;
       const goal = state.gradeGoals[course.id];
       return `<article class="card grade-card" style="--grade-color:${course.color}">
-        <div class="grade-card-head"><div><span class="eyebrow">${items.length} graded ${items.length === 1 ? "item" : "items"}</span><h2>${e(course.name)}</h2></div><strong class="grade-percent">${percent === null ? "—" : `${percent}%`}</strong></div>
+        <div class="grade-card-head"><div><h2>${e(course.name)}</h2><span>${items.length} graded ${items.length === 1 ? "item" : "items"}</span></div><strong class="grade-percent">${percent}%</strong></div>
         <div class="grade-progress"><span style="width:${Math.max(0, Math.min(100, percent || 0))}%"></span></div>
-        <p class="grade-points">${summary.possible ? `${formatPoints(summary.earned)} of ${formatPoints(summary.possible)} points` : "Add graded work to calculate your current grade."}</p>
-        <div class="grade-items">${items.length ? items.slice(0, 5).map(item => `<div class="grade-item"><div><strong>${e(item.title)}</strong><span>${item.date ? relativeDate(item.date) : "No date"}</span></div><span>${formatPoints(item.score)} / ${formatPoints(item.pointsPossible)}</span><button class="mini-action" data-delete-grade="${item.id}" aria-label="Delete ${e(item.title)}">${icons.trash}</button></div>`).join("") : '<div class="grade-empty">No grades recorded yet.</div>'}</div>
+        <p class="grade-points">${formatPoints(summary.earned)} of ${formatPoints(summary.possible)} points</p>
+        <div class="grade-items">${items.slice(0, 5).map(item => `<div class="grade-item"><div><strong>${e(item.title)}</strong><span>${item.date ? relativeDate(item.date) : "No date"}</span></div><span>${formatPoints(item.score)} / ${formatPoints(item.pointsPossible)}</span><button class="mini-action" data-delete-grade="${item.id}" aria-label="Delete ${e(item.title)}">${icons.trash}</button></div>`).join("")}</div>
+        <button class="text-link grade-add-link" data-add-grade="${course.id}">+ Add another grade</button>
         <div class="needed-calculator"><h3>What do I need next?</h3><div><label>Target %<input data-grade-target="${course.id}" type="number" min="0" max="100" step="0.1" value="${Number.isFinite(goal) ? goal : ""}" /></label><label>Next item points<input data-grade-future="${course.id}" type="number" min="0.01" max="100000" step="0.01" /></label><button class="button button-quiet" data-calculate-grade="${course.id}">Calculate</button></div><p id="grade-result-${course.id}" aria-live="polite"></p></div>
       </article>`;
-    }).join("")}</div>
+    }).join("")}</div>` : `<article class="card grades-empty"><div class="grades-empty-mark">%</div><div><h2>Add your first grade</h2><p>Choose a class, enter the points earned and possible, and OG Sync will calculate your current grade and what you need next.</p><button class="button button-dark" data-add-grade>Add graded item</button></div></article>`}
   </section>`;
 }
 
@@ -769,6 +835,7 @@ function render() {
   document.querySelector(".profile-button strong").textContent = state.profile.name || "Your workspace";
   document.querySelector(".avatar").textContent = (state.profile.name || "S").trim()[0].toUpperCase();
   document.querySelector("#topbar-date").textContent = new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+  updateThemeButton();
   ({ dashboard: renderDashboard, calendar: renderCalendar, planner: renderPlanner, focus: renderFocus, classes: renderClasses, grades: renderGrades, sync: renderSync })[page]();
   app.focus({ preventScroll: true });
 }
@@ -820,10 +887,12 @@ function tickTimer() {
   if (next.complete) {
     clearInterval(timer.interval);
     Object.assign(timer, { phase: "work", block: 1, total: timer.plan.work * 60, remaining: timer.plan.work * 60, running: false, deadline: 0, interval: null });
+    announceTimerTransition("Focus cycle complete", `You finished ${timer.plan.blocks} ${timer.plan.blocks === 1 ? "block" : "blocks"}.`);
     showToast(`Cycle complete. ${timer.plan.blocks} ${timer.plan.blocks === 1 ? "block" : "blocks"} finished.`);
   } else {
     const minutes = next.phase === "work" ? timer.plan.work : timer.plan.break;
     Object.assign(timer, { phase: next.phase, block: next.block, total: minutes * 60, remaining: minutes * 60, deadline: Date.now() + minutes * 60_000 });
+    announceTimerTransition(finishedPhase === "work" ? "Break started" : `Focus block ${timer.block} started`, finishedPhase === "work" ? `${timer.plan.break} minutes to reset.` : `${timer.plan.work} minutes of focused work.`);
     showToast(finishedPhase === "work" ? `Block ${timer.block} complete. Break started.` : `Break complete. Block ${timer.block} started.`);
   }
   if (currentPage() === "focus") renderFocus();
@@ -838,6 +907,7 @@ function toggleTimer() {
   } else {
     if (!timer.remaining) timer.remaining = timer.total;
     timer.taskId = document.querySelector("#focus-task")?.value || timer.taskId;
+    prepareTimerAudio();
     timer.running = true;
     timer.deadline = Date.now() + timer.remaining * 1000;
     timer.interval = setInterval(tickTimer, 250);
@@ -1006,7 +1076,8 @@ document.addEventListener("click", event => {
     else if (course && confirm(`Delete ${course.name}?`)) { tombstone("courses", course); state.courses = state.courses.filter(item => item.id !== course.id); delete state.gradeGoals[course.id]; save(); renderClasses(); showToast("Class deleted."); }
   }
 
-  if (event.target.closest("[data-add-grade]")) openGradeModal();
+  const addGrade = event.target.closest("[data-add-grade]");
+  if (addGrade) openGradeModal(addGrade.dataset.addGrade || "");
   const deleteGrade = event.target.closest("[data-delete-grade]");
   if (deleteGrade && confirm("Delete this graded item?")) {
     const item = state.gradeItems.find(grade => grade.id === deleteGrade.dataset.deleteGrade);
@@ -1058,6 +1129,8 @@ document.addEventListener("click", event => {
 
   if (event.target.closest("[data-timer-start]")) toggleTimer();
   if (event.target.closest("[data-timer-reset]")) resetTimer();
+  if (event.target.closest("[data-timer-alert]")) toggleTimerAlerts();
+  if (event.target.closest("#theme-button")) toggleTheme();
 
   if (event.target.closest("[data-export]")) {
     const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
