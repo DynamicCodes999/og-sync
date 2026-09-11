@@ -55,7 +55,6 @@ test("legacy state gains assignment, grade, and rotation fields without losing w
   const legacy = defaultState();
   delete legacy.gradeItems;
   delete legacy.courseGrades;
-  delete legacy.gradeGoals;
   delete legacy.schoolSchedule;
   delete legacy.tombstones.grades;
   legacy.tasks.push({ id: "legacy-1", title: "Essay", courseId: "english-10", due: "2026-09-04", time: "15:30", type: "Assignment", estimate: 45, priority: "normal", completed: false, description: "Use MLA format." });
@@ -65,7 +64,7 @@ test("legacy state gains assignment, grade, and rotation fields without losing w
   assert.equal(validState(state), true);
   assert.deepEqual(state.gradeItems, []);
   assert.deepEqual(state.courseGrades, {});
-  assert.deepEqual(state.gradeGoals, {});
+  assert.equal(state.gradeGoals, undefined);
   assert.deepEqual(state.schoolSchedule, { rotationLabels: ["A", "B"], anchorDate: "" });
   assert.equal(state.tasks[0].teacherInstructions, "Use MLA format.");
   assert.deepEqual(state.tasks[0].subtasks, []);
@@ -95,8 +94,6 @@ test("cloud state accepts rich assignment details, rotating periods, and grades"
   });
   state.gradeItems.push({ id: "grade-1", courseId: "algebra-2", title: "Quiz 1", score: 45, pointsPossible: 50, date: "2026-08-27" });
   state.courseGrades["algebra-2"] = { percent: 90, period: "1st Semester", calculationMethod: 3, provider: "blackbaud", syncedAt: "2026-08-27T22:00:00.000Z" };
-  state.gradeGoals["algebra-2"] = 90;
-
   assert.equal(validState(state), true);
   state.tasks[0].attachments[0].url = "http://example.com/insecure";
   assert.equal(validState(state), false);

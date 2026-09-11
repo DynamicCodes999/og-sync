@@ -30,15 +30,6 @@
     return { earned, possible, percent: possible ? earned / possible * 100 : null };
   }
 
-  function scoreNeeded(items, targetPercent, futurePoints) {
-    const { earned, possible } = gradeSummary(items);
-    const target = Number(targetPercent);
-    const future = Number(futurePoints);
-    if (!(target >= 0 && target <= 100) || !(future > 0)) return null;
-    const points = target / 100 * (possible + future) - earned;
-    return { points, percent: points / future * 100, possible: points <= future };
-  }
-
   function isAssessment(task) {
     return /\b(test|quiz|exam|midterm|final|assessment)\b/i.test(`${task?.type || ""} ${task?.title || ""}`);
   }
@@ -65,5 +56,5 @@
     return Boolean(!task?.completed && task.due && task.due < today && task.sources?.some(source => source.provider === "google" || source.provider === "blackbaud"));
   }
 
-  return { rotationForDate, gradeSummary, scoreNeeded, isAssessment, normalizeFocusPlan, nextFocusPhase, isSyncedMissingWork };
+  return { rotationForDate, gradeSummary, isAssessment, normalizeFocusPlan, nextFocusPhase, isSyncedMissingWork };
 });

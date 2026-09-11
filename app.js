@@ -53,7 +53,6 @@ function defaultState() {
     sessions: [],
     gradeItems: [],
     courseGrades: {},
-    gradeGoals: {},
     schoolSchedule: { rotationLabels: ["A", "B"], anchorDate: "" },
     sync: {},
     tombstones: { tasks: {}, courses: {}, sessions: {}, grades: {}, sources: {} }
@@ -64,7 +63,7 @@ function ensureTombstones(target) {
   target.sync ||= {};
   target.gradeItems ||= [];
   target.courseGrades ||= {};
-  target.gradeGoals ||= {};
+  delete target.gradeGoals;
   target.schoolSchedule ||= { rotationLabels: ["A", "B"], anchorDate: "" };
   target.tombstones ||= {};
   for (const key of ["tasks", "courses", "sessions", "grades", "sources"]) target.tombstones[key] ||= {};
@@ -108,7 +107,6 @@ function validState(data) {
   if (!data.sessions.every(session => id(session.id) && date(session.date) && Number.isFinite(session.minutes) && session.minutes >= 0 && session.minutes <= 1440 && text(session.label, 100))) return false;
   if (data.gradeItems !== undefined && (!Array.isArray(data.gradeItems) || data.gradeItems.length > 1000 || !data.gradeItems.every(item => id(item.id) && courseIds.has(item.courseId) && text(item.title, 100) && Number.isFinite(item.score) && item.score >= 0 && item.score <= 100000 && Number.isFinite(item.pointsPossible) && item.pointsPossible > 0 && item.pointsPossible <= 100000 && (item.date === "" || date(item.date)) && optionalText(item.type, 30) && optionalText(item.syncedAt, 40) && sources(item.sources)))) return false;
   if (data.courseGrades !== undefined && (!data.courseGrades || typeof data.courseGrades !== "object" || Array.isArray(data.courseGrades) || Object.keys(data.courseGrades).length > 30 || !Object.entries(data.courseGrades).every(([courseId, grade]) => courseIds.has(courseId) && grade && Number.isFinite(grade.percent) && grade.percent >= 0 && grade.percent <= 200 && text(grade.period, 80) && /^[a-z0-9-]{1,30}$/.test(grade.provider) && Number.isFinite(Date.parse(grade.syncedAt)) && Number.isFinite(grade.calculationMethod)))) return false;
-  if (data.gradeGoals !== undefined && (!data.gradeGoals || typeof data.gradeGoals !== "object" || Array.isArray(data.gradeGoals) || Object.keys(data.gradeGoals).length > 30 || !Object.entries(data.gradeGoals).every(([courseId, goal]) => courseIds.has(courseId) && Number.isFinite(goal) && goal >= 0 && goal <= 100))) return false;
   if (data.schoolSchedule !== undefined && (!data.schoolSchedule || !Array.isArray(data.schoolSchedule.rotationLabels) || data.schoolSchedule.rotationLabels.length !== 2 || !data.schoolSchedule.rotationLabels.every(label => text(label, 10) && label.trim()) || !(data.schoolSchedule.anchorDate === "" || date(data.schoolSchedule.anchorDate)))) return false;
   const validMap = value => value === undefined || (value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length <= 5000 && Object.entries(value).every(([key, stamp]) => key.length <= 300 && Number.isFinite(Date.parse(stamp))));
   return data.tombstones === undefined || (data.tombstones && ["tasks", "courses", "sessions", "grades", "sources"].every(key => validMap(data.tombstones[key])));
@@ -330,7 +328,6 @@ function mergeCloudConflict(remoteInput, localInput) {
     sessions: mergeById(remote.sessions, local.sessions),
     gradeItems: mergeById(remote.gradeItems, local.gradeItems),
     courseGrades: mergeCourseGrades(remote.courseGrades, local.courseGrades),
-    gradeGoals: { ...remote.gradeGoals, ...local.gradeGoals },
     schoolSchedule: structuredClone(local.schoolSchedule),
     sync,
     tombstones: {}
@@ -1078,7 +1075,7 @@ document.addEventListener("click", event => {
     const taskCount = state.tasks.filter(task => task.courseId === course?.id).length;
     const gradeCount = state.gradeItems.filter(item => item.courseId === course?.id).length;
     if (taskCount || gradeCount) showToast(`Remove the linked ${taskCount ? `${taskCount} ${taskCount === 1 ? "task" : "tasks"}` : ""}${taskCount && gradeCount ? " and " : ""}${gradeCount ? `${gradeCount} grade ${gradeCount === 1 ? "item" : "items"}` : ""} first.`);
-    else if (course && confirm(`Delete ${course.name}?`)) { tombstone("courses", course); state.courses = state.courses.filter(item => item.id !== course.id); delete state.gradeGoals[course.id]; save(); renderClasses(); showToast("Class deleted."); }
+    else if (course && confirm(`Delete ${course.name}?`)) { tombstone("courses", course); state.courses = state.courses.filter(item => item.id !== course.id); save(); renderClasses(); showToast("Class deleted."); }
   }
 
   if (event.target.id === "add-subtask") {

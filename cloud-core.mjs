@@ -19,7 +19,6 @@ export function defaultState() {
     sessions: [],
     gradeItems: [],
     courseGrades: {},
-    gradeGoals: {},
     schoolSchedule: { rotationLabels: ["A", "B"], anchorDate: "" },
     sync: {},
     tombstones: { tasks: {}, courses: {}, sessions: {}, grades: {}, sources: {} }
@@ -44,7 +43,6 @@ export function validState(data) {
   if (!data.sessions.every(session => id(session.id) && date(session.date) && Number.isFinite(session.minutes) && session.minutes >= 0 && session.minutes <= 1440 && text(session.label, 100))) return false;
   if (data.gradeItems !== undefined && (!Array.isArray(data.gradeItems) || data.gradeItems.length > 1000 || !data.gradeItems.every(item => id(item.id) && courseIds.has(item.courseId) && text(item.title, 100) && Number.isFinite(item.score) && item.score >= 0 && item.score <= 100000 && Number.isFinite(item.pointsPossible) && item.pointsPossible > 0 && item.pointsPossible <= 100000 && (item.date === "" || date(item.date)) && optionalText(item.type, 30) && optionalText(item.syncedAt, 40) && sources(item.sources)))) return false;
   if (data.courseGrades !== undefined && (!data.courseGrades || typeof data.courseGrades !== "object" || Array.isArray(data.courseGrades) || Object.keys(data.courseGrades).length > 30 || !Object.entries(data.courseGrades).every(([courseId, grade]) => courseIds.has(courseId) && grade && Number.isFinite(grade.percent) && grade.percent >= 0 && grade.percent <= 200 && text(grade.period, 80) && /^[a-z0-9-]{1,30}$/.test(grade.provider) && Number.isFinite(Date.parse(grade.syncedAt)) && Number.isFinite(grade.calculationMethod)))) return false;
-  if (data.gradeGoals !== undefined && (!data.gradeGoals || typeof data.gradeGoals !== "object" || Array.isArray(data.gradeGoals) || Object.keys(data.gradeGoals).length > 30 || !Object.entries(data.gradeGoals).every(([courseId, goal]) => courseIds.has(courseId) && Number.isFinite(goal) && goal >= 0 && goal <= 100))) return false;
   if (data.schoolSchedule !== undefined && (!data.schoolSchedule || !Array.isArray(data.schoolSchedule.rotationLabels) || data.schoolSchedule.rotationLabels.length !== 2 || !data.schoolSchedule.rotationLabels.every(label => text(label, 10) && label.trim()) || !(data.schoolSchedule.anchorDate === "" || date(data.schoolSchedule.anchorDate)))) return false;
   if (data.sync !== undefined && (!data.sync || typeof data.sync !== "object" || Array.isArray(data.sync) || Object.keys(data.sync).length > 20)) return false;
   if (data.tombstones !== undefined && (!data.tombstones || !["tasks", "courses", "sessions", "grades", "sources"].every(key => validMap(data.tombstones[key] || {})))) return false;
@@ -56,7 +54,7 @@ export function normalizeState(input) {
   state.sync ||= {};
   state.gradeItems ||= [];
   state.courseGrades ||= {};
-  state.gradeGoals ||= {};
+  delete state.gradeGoals;
   state.schoolSchedule ||= { rotationLabels: ["A", "B"], anchorDate: "" };
   state.tombstones ||= {};
   for (const key of ["tasks", "courses", "sessions", "grades", "sources"]) state.tombstones[key] ||= {};
@@ -112,7 +110,6 @@ export function mergeForConflict(remoteInput, localInput) {
     sessions: mergeById(remote.sessions, local.sessions),
     gradeItems: mergeById(remote.gradeItems, local.gradeItems),
     courseGrades: mergeCourseGrades(remote.courseGrades, local.courseGrades),
-    gradeGoals: { ...remote.gradeGoals, ...local.gradeGoals },
     schoolSchedule: structuredClone(local.schoolSchedule),
     sync: { ...remote.sync, ...local.sync },
     tombstones: {}
