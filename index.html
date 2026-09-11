@@ -7,7 +7,7 @@
     <meta name="description" content="A calm, local-first school planner." />
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="icon" href="./icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="./styles.css?v=20" />
+    <link rel="stylesheet" href="./styles.css?v=21" />
     <title>OG Sync — School planner</title>
   </head>
   <body>
@@ -145,16 +145,6 @@
       </form>
     </dialog>
 
-    <dialog class="modal modal-small" id="grade-modal">
-      <form method="dialog" id="grade-form">
-        <div class="modal-header"><div><span class="eyebrow">Grade tracker</span><h2>Add a graded item</h2></div><button class="icon-button" value="cancel" aria-label="Close" type="submit">×</button></div>
-        <label>Class<select id="grade-course" name="course"></select></label>
-        <label style="margin-top:15px">Assignment or test<input id="grade-title" name="title" required maxlength="100" autocomplete="off" /></label>
-        <div class="form-grid"><label>Points earned<input name="score" type="number" min="0" max="100000" step="0.01" required /></label><label>Points possible<input name="pointsPossible" type="number" min="0.01" max="100000" step="0.01" required /></label><label>Date <span class="optional">Optional</span><input id="grade-date" name="date" type="date" /></label></div>
-        <div class="modal-actions"><button class="button button-quiet" value="cancel" type="submit">Cancel</button><button class="button button-dark" value="save" type="submit">Add grade</button></div>
-      </form>
-    </dialog>
-
     <dialog class="modal modal-small" id="search-modal">
       <form method="dialog" id="search-form">
         <div class="search-input-wrap"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input id="global-search" placeholder="Search tasks and classes…" autocomplete="off" /><kbd>esc</kbd></div>
@@ -174,8 +164,8 @@
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <input id="import-input" type="file" accept="application/json,.json" hidden />
-    <script src="./sync.js?v=20"></script>
-    <script src="./school.js?v=20"></script>
-    <script src="./app.js?v=20"></script>
+    <script src="./sync.js?v=21"></script>
+    <script src="./school.js?v=21"></script>
+    <script src="./app.js?v=21"></script>
   </body>
 </html>

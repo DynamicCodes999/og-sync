@@ -100,12 +100,29 @@
     };
   }
 
+  function cleanGrade(remote, course, syncedAt) {
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(remote.date || "") ? remote.date : "";
+    return {
+      courseId: course.id,
+      title: decodeEntities(remote.title || "Untitled grade").trim().slice(0, 100),
+      score: Number(remote.score),
+      pointsPossible: Number(remote.pointsPossible),
+      date,
+      type: String(remote.type || "Assignment").trim().slice(0, 30),
+      syncedAt
+    };
+  }
+
   function mergeImported(state, payload, idFactory = () => crypto.randomUUID().replaceAll("-", "").slice(0, 12)) {
     if (!payload || !/^[a-z0-9-]{1,30}$/.test(payload.provider || "") || !Array.isArray(payload.courses) || !Array.isArray(payload.assignments)) throw new Error("Invalid sync payload");
     const provider = payload.provider;
     const syncedAt = payload.syncedAt || new Date().toISOString();
+    const grades = Array.isArray(payload.grades) ? payload.grades : [];
+    const courseGrades = Array.isArray(payload.courseGrades) ? payload.courseGrades : [];
+    state.gradeItems ||= [];
+    state.courseGrades ||= {};
     const courseBySource = new Map();
-    const counts = { imported: 0, updated: 0, merged: 0, coursesAdded: 0 };
+    const counts = { imported: 0, updated: 0, merged: 0, coursesAdded: 0, gradesImported: 0, gradesUpdated: 0 };
 
     for (const remote of payload.courses) {
       if (!remote || !String(remote.name || "").trim()) continue;
@@ -146,6 +163,48 @@
         state.tasks.push({ id: idFactory(), ...next, sources: [{ provider, id: sourceId }] });
         counts.imported++;
       }
+    }
+
+    for (const remote of grades) {
+      const sourceId = String(remote?.sourceId || "");
+      const score = Number(remote?.score);
+      const possible = Number(remote?.pointsPossible);
+      if (!sourceId || !String(remote.title || "").trim() || !Number.isFinite(score) || score < 0 || !(possible > 0)) continue;
+      let course = courseBySource.get(String(remote.courseSourceId || ""));
+      if (!course) course = ensureCourse(state, { sourceId: remote.courseSourceId || remote.courseName, name: remote.courseName || remote.course || "Imported class" }, provider, idFactory);
+      const next = cleanGrade(remote, course, syncedAt);
+      let item = state.gradeItems.find(grade => sourceMatch(grade, provider, sourceId));
+      if (!item) item = state.gradeItems.find(grade => grade.courseId === course.id && normalizeText(grade.title) === normalizeText(next.title) && (grade.date || "") === next.date);
+      if (item) {
+        Object.assign(item, next);
+        addSource(item, { provider, id: sourceId });
+        counts.gradesUpdated++;
+      } else {
+        state.gradeItems.push({ id: `grade-${idFactory()}`, ...next, sources: [{ provider, id: sourceId }] });
+        counts.gradesImported++;
+      }
+    }
+
+    const refreshedCourses = new Set(courseGrades.map(remote => courseBySource.get(String(remote.courseSourceId || ""))?.id).filter(Boolean));
+    const currentGradeSources = new Set(grades.map(remote => sourceKey(provider, String(remote.sourceId || ""))));
+    state.gradeItems = state.gradeItems.filter(item => {
+      if (!refreshedCourses.has(item.courseId)) return true;
+      const providerSources = (item.sources || []).filter(source => source.provider === provider);
+      return !providerSources.length || providerSources.some(source => currentGradeSources.has(sourceKey(source.provider, source.id)));
+    });
+
+    for (const remote of courseGrades) {
+      const percent = Number(remote?.percent);
+      if (!Number.isFinite(percent) || percent < 0 || percent > 200) continue;
+      let course = courseBySource.get(String(remote.courseSourceId || ""));
+      if (!course) course = ensureCourse(state, { sourceId: remote.courseSourceId || remote.course, name: remote.course || "Imported class" }, provider, idFactory);
+      state.courseGrades[course.id] = {
+        percent: Math.round(percent * 100) / 100,
+        period: String(remote.period || "Current marking period").slice(0, 80),
+        calculationMethod: Number(remote.calculationMethod) || 0,
+        provider,
+        syncedAt
+      };
     }
 
     state.sync ||= {};

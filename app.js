@@ -52,6 +52,7 @@ function defaultState() {
     tasks: [],
     sessions: [],
     gradeItems: [],
+    courseGrades: {},
     gradeGoals: {},
     schoolSchedule: { rotationLabels: ["A", "B"], anchorDate: "" },
     sync: {},
@@ -62,6 +63,7 @@ function defaultState() {
 function ensureTombstones(target) {
   target.sync ||= {};
   target.gradeItems ||= [];
+  target.courseGrades ||= {};
   target.gradeGoals ||= {};
   target.schoolSchedule ||= { rotationLabels: ["A", "B"], anchorDate: "" };
   target.tombstones ||= {};
@@ -104,7 +106,8 @@ function validState(data) {
   const courseIds = new Set(data.courses.map(course => course.id));
   if (!data.tasks.every(task => id(task.id) && text(task.title, 100) && (courseIds.has(task.courseId) || task.courseId === "personal") && (task.due === "" || date(task.due)) && time(task.time) && text(task.type, 30) && Number.isFinite(task.estimate) && task.estimate >= 0 && task.estimate <= 1440 && ["low", "normal", "high"].includes(task.priority) && typeof task.completed === "boolean" && sources(task.sources) && (task.url === undefined || task.url === "" || (text(task.url, 2000) && /^https:\/\//.test(task.url))) && optionalText(task.description, 5000) && optionalText(task.notes, 5000) && optionalText(task.teacherInstructions, 10000) && (task.subtasks === undefined || (Array.isArray(task.subtasks) && task.subtasks.length <= 100 && task.subtasks.every(item => id(item.id) && text(item.title, 120) && typeof item.completed === "boolean"))) && (task.attachments === undefined || (Array.isArray(task.attachments) && task.attachments.length <= 20 && task.attachments.every(item => id(item.id) && text(item.name, 120) && text(item.url, 2000) && /^https:\/\//.test(item.url)))))) return false;
   if (!data.sessions.every(session => id(session.id) && date(session.date) && Number.isFinite(session.minutes) && session.minutes >= 0 && session.minutes <= 1440 && text(session.label, 100))) return false;
-  if (data.gradeItems !== undefined && (!Array.isArray(data.gradeItems) || data.gradeItems.length > 1000 || !data.gradeItems.every(item => id(item.id) && courseIds.has(item.courseId) && text(item.title, 100) && Number.isFinite(item.score) && item.score >= 0 && item.score <= 100000 && Number.isFinite(item.pointsPossible) && item.pointsPossible > 0 && item.pointsPossible <= 100000 && (item.date === "" || date(item.date))))) return false;
+  if (data.gradeItems !== undefined && (!Array.isArray(data.gradeItems) || data.gradeItems.length > 1000 || !data.gradeItems.every(item => id(item.id) && courseIds.has(item.courseId) && text(item.title, 100) && Number.isFinite(item.score) && item.score >= 0 && item.score <= 100000 && Number.isFinite(item.pointsPossible) && item.pointsPossible > 0 && item.pointsPossible <= 100000 && (item.date === "" || date(item.date)) && optionalText(item.type, 30) && optionalText(item.syncedAt, 40) && sources(item.sources)))) return false;
+  if (data.courseGrades !== undefined && (!data.courseGrades || typeof data.courseGrades !== "object" || Array.isArray(data.courseGrades) || Object.keys(data.courseGrades).length > 30 || !Object.entries(data.courseGrades).every(([courseId, grade]) => courseIds.has(courseId) && grade && Number.isFinite(grade.percent) && grade.percent >= 0 && grade.percent <= 200 && text(grade.period, 80) && /^[a-z0-9-]{1,30}$/.test(grade.provider) && Number.isFinite(Date.parse(grade.syncedAt)) && Number.isFinite(grade.calculationMethod)))) return false;
   if (data.gradeGoals !== undefined && (!data.gradeGoals || typeof data.gradeGoals !== "object" || Array.isArray(data.gradeGoals) || Object.keys(data.gradeGoals).length > 30 || !Object.entries(data.gradeGoals).every(([courseId, goal]) => courseIds.has(courseId) && Number.isFinite(goal) && goal >= 0 && goal <= 100))) return false;
   if (data.schoolSchedule !== undefined && (!data.schoolSchedule || !Array.isArray(data.schoolSchedule.rotationLabels) || data.schoolSchedule.rotationLabels.length !== 2 || !data.schoolSchedule.rotationLabels.every(label => text(label, 10) && label.trim()) || !(data.schoolSchedule.anchorDate === "" || date(data.schoolSchedule.anchorDate)))) return false;
   const validMap = value => value === undefined || (value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length <= 5000 && Object.entries(value).every(([key, stamp]) => key.length <= 300 && Number.isFinite(Date.parse(stamp))));
@@ -129,7 +132,6 @@ const profileModal = document.querySelector("#profile-modal");
 const classModal = document.querySelector("#class-modal");
 const taskDetailModal = document.querySelector("#task-detail-modal");
 const scheduleModal = document.querySelector("#schedule-modal");
-const gradeModal = document.querySelector("#grade-modal");
 const cloudModal = document.querySelector("#cloud-modal");
 let detailDraft;
 const cloud = {
@@ -293,13 +295,21 @@ function mergeById(remote, local) {
   return [...merged.values()];
 }
 
+function mergeCourseGrades(remote = {}, local = {}) {
+  const merged = structuredClone(remote);
+  for (const [courseId, grade] of Object.entries(local)) {
+    if (!merged[courseId] || Date.parse(grade.syncedAt) >= Date.parse(merged[courseId].syncedAt)) merged[courseId] = structuredClone(grade);
+  }
+  return merged;
+}
+
 function applyTombstones(target) {
   ensureTombstones(target);
   const deleted = target.tombstones;
   target.tasks = target.tasks.filter(task => !deleted.tasks[task.id] && !(task.sources || []).some(source => deleted.sources[window.DaymarkSync.sourceKey(source.provider, source.id)]));
   target.sessions = target.sessions.filter(session => !deleted.sessions[session.id]);
   target.gradeItems = target.gradeItems.filter(item => !deleted.grades[item.id]);
-  const usedCourses = new Set([...target.tasks.map(task => task.courseId), ...target.gradeItems.map(item => item.courseId)]);
+  const usedCourses = new Set([...target.tasks.map(task => task.courseId), ...target.gradeItems.map(item => item.courseId), ...Object.keys(target.courseGrades)]);
   target.courses = target.courses.filter(course => !deleted.courses[course.id] || usedCourses.has(course.id));
   return target;
 }
@@ -319,6 +329,7 @@ function mergeCloudConflict(remoteInput, localInput) {
     tasks: mergeById(remote.tasks, local.tasks),
     sessions: mergeById(remote.sessions, local.sessions),
     gradeItems: mergeById(remote.gradeItems, local.gradeItems),
+    courseGrades: mergeCourseGrades(remote.courseGrades, local.courseGrades),
     gradeGoals: { ...remote.gradeGoals, ...local.gradeGoals },
     schoolSchedule: structuredClone(local.schoolSchedule),
     sync,
@@ -629,38 +640,41 @@ function formatPoints(value) {
 }
 
 function renderGrades() {
-  const coursesWithGrades = state.courses.filter(course => state.gradeItems.some(item => item.courseId === course.id));
+  const coursesWithGrades = state.courses.filter(course => state.courseGrades[course.id] || state.gradeItems.some(item => item.courseId === course.id));
+  const refreshButton = HOSTED
+    ? '<button class="button button-quiet" data-cloud-refresh>Refresh cloud</button>'
+    : '<button class="button button-dark" data-sync-provider="blackbaud">Sync grades</button>';
   app.innerHTML = `<section class="page">
-    <div class="page-heading"><div><h1>Grade tracker</h1><p>Track earned points and calculate what you need on the next assignment or test.</p></div><button class="button button-dark" data-add-grade>+ Add graded item</button></div>
-    <aside class="card grade-note"><span class="integration-logo">%</span><div><h3>Points-based calculation</h3><p>OG Sync uses total points earned ÷ total points possible. If a teacher weights categories, use the official gradebook as the final source.</p></div></aside>
+    <div class="page-heading"><div><h1>Grades</h1><p>Your published My Oak Grove grades, imported automatically.</p></div>${refreshButton}</div>
+    <aside class="card grade-note"><span class="integration-logo">%</span><div><h3>Official totals from My Oak Grove</h3><p>OG Sync uses Blackbaud’s current percentage so weighted categories stay accurate. Gradebook changes appear after the trusted Mac helper syncs.</p></div></aside>
     ${coursesWithGrades.length ? `<div class="grades-grid">${coursesWithGrades.map(course => {
       const items = state.gradeItems.filter(item => item.courseId === course.id).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
       const summary = window.DaymarkSchool.gradeSummary(items);
-      const percent = summary.percent === null ? null : Math.round(summary.percent * 10) / 10;
-      const goal = state.gradeGoals[course.id];
+      const official = state.courseGrades[course.id];
+      const percent = official ? official.percent : summary.percent === null ? null : Math.round(summary.percent * 10) / 10;
+      const lastSynced = official?.syncedAt ? new Date(official.syncedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "Previous local data";
       return `<article class="card grade-card" style="--grade-color:${course.color}">
-        <div class="grade-card-head"><div><h2>${e(course.name)}</h2><span>${items.length} graded ${items.length === 1 ? "item" : "items"}</span></div><strong class="grade-percent">${percent}%</strong></div>
+        <div class="grade-card-head"><div><h2>${e(course.name)}</h2><span>${e(official?.period || "Imported grade history")} · ${items.length} published ${items.length === 1 ? "item" : "items"}</span></div><strong class="grade-percent">${percent === null ? "—" : `${formatPoints(percent)}%`}</strong></div>
         <div class="grade-progress"><span style="width:${Math.max(0, Math.min(100, percent || 0))}%"></span></div>
-        <p class="grade-points">${formatPoints(summary.earned)} of ${formatPoints(summary.possible)} points</p>
-        <div class="grade-items">${items.slice(0, 5).map(item => `<div class="grade-item"><div><strong>${e(item.title)}</strong><span>${item.date ? relativeDate(item.date) : "No date"}</span></div><span>${formatPoints(item.score)} / ${formatPoints(item.pointsPossible)}</span><button class="mini-action" data-delete-grade="${item.id}" aria-label="Delete ${e(item.title)}">${icons.trash}</button></div>`).join("")}</div>
-        <button class="text-link grade-add-link" data-add-grade="${course.id}">+ Add another grade</button>
-        <div class="needed-calculator"><h3>What do I need next?</h3><div><label>Target %<input data-grade-target="${course.id}" type="number" min="0" max="100" step="0.1" value="${Number.isFinite(goal) ? goal : ""}" /></label><label>Next item points<input data-grade-future="${course.id}" type="number" min="0.01" max="100000" step="0.01" /></label><button class="button button-quiet" data-calculate-grade="${course.id}">Calculate</button></div><p id="grade-result-${course.id}" aria-live="polite"></p></div>
+        <p class="grade-points">${official ? `Synced ${e(lastSynced)}` : `${formatPoints(summary.earned)} of ${formatPoints(summary.possible)} points`}</p>
+        ${items.length ? `<div class="grade-items">${items.slice(0, 8).map(item => `<div class="grade-item"><div><strong>${e(item.title)}</strong><span>${e([item.type, item.date ? relativeDate(item.date) : "No date"].filter(Boolean).join(" · "))}</span></div><span>${formatPoints(item.score)} / ${formatPoints(item.pointsPossible)}</span></div>`).join("")}</div>` : '<p class="grade-empty">No individual scores have been published for this marking period.</p>'}
+        ${official?.calculationMethod ? '<p class="grade-method">Blackbaud calculates this total using your teacher’s gradebook rules.</p>' : ""}
       </article>`;
-    }).join("")}</div>` : `<article class="card grades-empty"><div class="grades-empty-mark">%</div><div><h2>Add your first grade</h2><p>Choose a class, enter the points earned and possible, and OG Sync will calculate your current grade and what you need next.</p><button class="button button-dark" data-add-grade>Add graded item</button></div></article>`}
+    }).join("")}</div>` : `<article class="card grades-empty"><div class="grades-empty-mark">%</div><div><h2>No published grades yet</h2><p>Keep the trusted Mac helper running and signed into My Oak Grove. Official percentages and graded work will appear here automatically.</p></div></article>`}
   </section>`;
 }
 
 function renderSync() {
   if (HOSTED) {
     app.innerHTML = `<section class="page">
-      <div class="page-heading"><div class="sync-intro"><span class="eyebrow">Available anywhere</span><h1>Cloud sync</h1><p>Your planner is protected by your private OG Sync key. The trusted Mac imports school data; this browser receives the normalized assignments.</p></div><button class="button button-quiet" data-cloud-refresh>Refresh now</button></div>
+      <div class="page-heading"><div class="sync-intro"><span class="eyebrow">Available anywhere</span><h1>Cloud sync</h1><p>Your planner is protected by your private OG Sync key. The trusted Mac imports school data; this browser receives normalized assignments and grades.</p></div><button class="button button-quiet" data-cloud-refresh>Refresh now</button></div>
       <div class="sync-grid">
         ${cloudProviderCard("google", "G", "Google Classroom")}
         ${cloudProviderCard("blackbaud", "B", "My Oak Grove · Blackbaud")}
         <article class="card integration-card"><div class="integration-top"><span class="integration-logo">☁</span><span class="status-pill connected">Connected</span></div><h2>OG Sync cloud</h2><p>This device saves planner changes to your private Vercel storage. School passwords and provider cookies never leave your Mac.</p><button class="button button-quiet" data-cloud-disconnect>Change sync key</button></article>
         <article class="card integration-card"><div class="integration-top"><span class="integration-logo">↕</span><span class="status-pill">Backup</span></div><h2>Export or restore</h2><p>Keep a portable JSON backup, or restore one and send it to your cloud workspace.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="button button-dark" data-export>Export data</button><button class="button button-quiet" data-import>Import backup</button></div></article>
         <article class="card integration-card"><div class="integration-top"><span class="integration-logo">⌫</span><span class="status-pill">All devices</span></div><h2>Clear assignments & history</h2><p>Remove every task and focus session from OG Sync while keeping your class setup and profile.</p><button class="button button-quiet danger-link" data-clear-work>Clear work data</button></article>
-        <aside class="card privacy-card"><span class="integration-logo">${icons.shield}</span><div><h3>Your school credentials are not in Vercel.</h3><p>The Mac helper keeps Google and Blackbaud sessions in .data/scraper-profile and uploads only classes, assignment details, and sync timestamps.</p></div></aside>
+        <aside class="card privacy-card"><span class="integration-logo">${icons.shield}</span><div><h3>Your school credentials are not in Vercel.</h3><p>The Mac helper keeps Google and Blackbaud sessions in .data/scraper-profile and uploads only classes, assignments, published grades, and sync timestamps.</p></div></aside>
       </div>
     </section>`;
     return;
@@ -681,7 +695,7 @@ function renderSync() {
 function cloudProviderCard(provider, mark, title) {
   const result = state.sync?.[syncStateKeys[provider]];
   const connected = Number.isFinite(Date.parse(result?.lastSyncedAt || ""));
-  return `<article class="card integration-card"><div class="integration-top"><span class="integration-logo ${provider}">${mark}</span><span class="status-pill ${connected ? "connected" : ""}">${connected ? "Synced by Mac" : "Waiting for Mac"}</span></div><h2>${title}</h2><p>${connected ? lastSyncText(provider) : "Run the OG Sync helper on your trusted Mac once to send this service’s assignments to the cloud."}</p></article>`;
+  return `<article class="card integration-card"><div class="integration-top"><span class="integration-logo ${provider}">${mark}</span><span class="status-pill ${connected ? "connected" : ""}">${connected ? "Synced by Mac" : "Waiting for Mac"}</span></div><h2>${title}</h2><p>${connected ? lastSyncText(provider) : "Run the OG Sync helper on your trusted Mac once to send this service’s school data to the cloud."}</p></article>`;
 }
 
 function integrationCard(provider, mark, title, description) {
@@ -699,7 +713,8 @@ function lastSyncText(provider) {
   const time = Date.parse(value || "");
   if (!Number.isFinite(time)) return "Ready for the first sync.";
   const checked = Number(result.updated || 0) + Number(result.merged || 0);
-  return `Last result: ${Number(result.imported || 0)} new, ${checked} existing. Synced ${new Date(time).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}.`;
+  const grades = provider === "blackbaud" ? ` Grades: ${Number(result.gradesImported || 0)} new, ${Number(result.gradesUpdated || 0)} updated.` : "";
+  return `Last result: ${Number(result.imported || 0)} new, ${checked} existing assignments.${grades} Synced ${new Date(time).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}.`;
 }
 
 function paintSyncProvider(provider, status = syncServerStatus, error = "") {
@@ -793,7 +808,8 @@ async function runSync(provider, { silent = false } = {}) {
     if (payload.cloud?.error) showToast(`Assignments imported here, but cloud upload failed: ${payload.cloud.error}`);
     else if (!silent || counts.imported) {
       const existing = counts.updated + counts.merged;
-      showToast(counts.imported ? `${counts.imported} new ${counts.imported === 1 ? "assignment" : "assignments"}; ${existing} existing checked or updated.` : `No duplicates added; ${existing} assignments checked.`);
+      const gradeText = provider === "blackbaud" ? ` ${counts.gradesImported} new grades; ${counts.gradesUpdated} grades updated.` : "";
+      showToast(`${counts.imported} new assignments; ${existing} existing checked.${gradeText}`);
     }
   } catch (error) {
     failure = error.message;
@@ -978,17 +994,6 @@ function openScheduleModal() {
   scheduleModal.showModal();
 }
 
-function openGradeModal(courseId = "") {
-  const select = document.querySelector("#grade-course");
-  select.innerHTML = state.courses.map(course => `<option value="${course.id}">${e(course.name)}</option>`).join("");
-  document.querySelector("#grade-date").value = dateKey();
-  document.querySelector("#grade-form").reset();
-  document.querySelector("#grade-date").value = dateKey();
-  if (courseId) select.value = courseId;
-  gradeModal.showModal();
-  setTimeout(() => document.querySelector("#grade-title").focus(), 50);
-}
-
 function openClassModal(id = "") {
   const form = document.querySelector("#class-form");
   form.reset();
@@ -1074,32 +1079,6 @@ document.addEventListener("click", event => {
     const gradeCount = state.gradeItems.filter(item => item.courseId === course?.id).length;
     if (taskCount || gradeCount) showToast(`Remove the linked ${taskCount ? `${taskCount} ${taskCount === 1 ? "task" : "tasks"}` : ""}${taskCount && gradeCount ? " and " : ""}${gradeCount ? `${gradeCount} grade ${gradeCount === 1 ? "item" : "items"}` : ""} first.`);
     else if (course && confirm(`Delete ${course.name}?`)) { tombstone("courses", course); state.courses = state.courses.filter(item => item.id !== course.id); delete state.gradeGoals[course.id]; save(); renderClasses(); showToast("Class deleted."); }
-  }
-
-  const addGrade = event.target.closest("[data-add-grade]");
-  if (addGrade) openGradeModal(addGrade.dataset.addGrade || "");
-  const deleteGrade = event.target.closest("[data-delete-grade]");
-  if (deleteGrade && confirm("Delete this graded item?")) {
-    const item = state.gradeItems.find(grade => grade.id === deleteGrade.dataset.deleteGrade);
-    if (item) tombstone("grades", item);
-    state.gradeItems = state.gradeItems.filter(grade => grade.id !== deleteGrade.dataset.deleteGrade);
-    save(); renderGrades(); showToast("Grade removed.");
-  }
-  const calculateGrade = event.target.closest("[data-calculate-grade]");
-  if (calculateGrade) {
-    const courseId = calculateGrade.dataset.calculateGrade;
-    const targetValue = document.querySelector(`[data-grade-target="${courseId}"]`).value;
-    const futureValue = document.querySelector(`[data-grade-future="${courseId}"]`).value;
-    const target = targetValue === "" ? Number.NaN : Number(targetValue);
-    const future = futureValue === "" ? Number.NaN : Number(futureValue);
-    const result = window.DaymarkSchool.scoreNeeded(state.gradeItems.filter(item => item.courseId === courseId), target, future);
-    const output = document.querySelector(`#grade-result-${courseId}`);
-    if (!result) output.textContent = "Enter a target from 0–100 and the next item’s point value.";
-    else {
-      state.gradeGoals[courseId] = target;
-      save();
-      output.textContent = result.points <= 0 ? "You are already at or above that target." : result.possible ? `You need ${formatPoints(result.points)} of ${formatPoints(future)} points (${Math.round(result.percent * 10) / 10}%).` : `One item cannot reach that target; it would require ${Math.round(result.percent * 10) / 10}%.`;
-    }
   }
 
   if (event.target.id === "add-subtask") {
@@ -1230,17 +1209,6 @@ document.querySelector("#schedule-form").addEventListener("submit", event => {
   }
   state.schoolSchedule = { rotationLabels: labels, anchorDate: data.get("anchorDate") };
   save(); scheduleModal.close(); renderClasses(); showToast("School rotation updated.");
-});
-
-document.querySelector("#grade-form").addEventListener("submit", event => {
-  event.preventDefault();
-  if (event.submitter?.value === "cancel") return gradeModal.close();
-  const data = new FormData(event.currentTarget);
-  const score = Number(data.get("score"));
-  const pointsPossible = Number(data.get("pointsPossible"));
-  if (!(score >= 0) || !(pointsPossible > 0)) return showToast("Enter valid earned and possible points.");
-  state.gradeItems.push({ id: crypto.randomUUID(), courseId: data.get("course"), title: data.get("title").trim(), score, pointsPossible, date: data.get("date") || "" });
-  save(); gradeModal.close(); renderGrades(); showToast("Grade added.");
 });
 
 document.querySelector("#cloud-form").addEventListener("submit", async event => {

@@ -7,7 +7,9 @@ function workspace() {
     profile: { name: "" },
     courses: [{ id: "algebra-2", name: "Algebra 2", teacher: "", room: "", color: "#ddd5f4", schedule: [] }],
     tasks: [],
-    sessions: []
+    sessions: [],
+    gradeItems: [],
+    courseGrades: {}
   };
 }
 
@@ -69,6 +71,33 @@ test("decodes HTML entities in imported assignment titles", () => {
     assignments: [{ sourceId: "work-1", courseSourceId: "chemistry", title: "Electron Configuration (long&amp;short)", due: "2026-09-21" }]
   }, () => "1");
   assert.equal(state.tasks[0].title, "Electron Configuration (long&short)");
+});
+
+test("automatic grades update without duplicates and keep Blackbaud's official total", () => {
+  const state = workspace();
+  let id = 0;
+  const ids = () => String(++id);
+  const payload = {
+    provider: "blackbaud",
+    syncedAt: "2026-09-11T22:00:00Z",
+    courses: [{ sourceId: "section-8", name: "Algebra 2" }],
+    assignments: [],
+    grades: [{ sourceId: "grade-11", courseSourceId: "section-8", course: "Algebra 2", title: "Unit quiz", score: 18, pointsPossible: 20, date: "2026-09-10", type: "Quiz" }],
+    courseGrades: [{ courseSourceId: "section-8", course: "Algebra 2", percent: 84.48, period: "1st Semester", calculationMethod: 3 }]
+  };
+
+  const first = mergeImported(state, payload, ids);
+  payload.grades[0].score = 19;
+  payload.courseGrades[0].percent = 86.2;
+  payload.syncedAt = "2026-09-11T22:05:00Z";
+  const second = mergeImported(state, payload, ids);
+
+  assert.equal(first.gradesImported, 1);
+  assert.equal(second.gradesUpdated, 1);
+  assert.equal(state.gradeItems.length, 1);
+  assert.equal(state.gradeItems[0].score, 19);
+  assert.equal(state.courseGrades["algebra-2"].percent, 86.2);
+  assert.equal(state.courseGrades["algebra-2"].calculationMethod, 3);
 });
 
 test("a provider ID survives due-date edits while different classes stay separate", () => {

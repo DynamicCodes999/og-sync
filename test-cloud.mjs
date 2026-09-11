@@ -6,7 +6,9 @@ const blackbaud = {
   provider: "blackbaud",
   syncedAt: "2026-08-27T22:00:00.000Z",
   courses: [{ sourceId: "band-section", name: "Band" }],
-  assignments: [{ sourceId: "syllabus-1", courseSourceId: "band-section", courseName: "Band", title: "Syllabus", due: "2026-09-14", time: "11:20", type: "Assignment" }]
+  assignments: [{ sourceId: "syllabus-1", courseSourceId: "band-section", courseName: "Band", title: "Syllabus", due: "2026-09-14", time: "11:20", type: "Assignment" }],
+  grades: [{ sourceId: "playing-1", courseSourceId: "band-section", course: "Band", title: "Playing assessment", score: 19, pointsPossible: 20, date: "2026-08-26", type: "Assessment" }],
+  courseGrades: [{ courseSourceId: "band-section", course: "Band", percent: 95, period: "1st Semester", calculationMethod: 3 }]
 };
 
 test("default cloud state is valid and includes every real class", () => {
@@ -22,6 +24,8 @@ test("cloud imports are idempotent", () => {
   const second = importPayload(first.state, blackbaud, ids);
   assert.equal(first.counts.imported, 1);
   assert.equal(second.state.tasks.length, 1);
+  assert.equal(second.state.gradeItems.length, 1);
+  assert.equal(second.state.courseGrades.band.percent, 95);
   assert.equal(second.counts.updated, 1);
 });
 
@@ -50,6 +54,7 @@ test("a stale device merge preserves a fresh import and its own edit", () => {
 test("legacy state gains assignment, grade, and rotation fields without losing work", () => {
   const legacy = defaultState();
   delete legacy.gradeItems;
+  delete legacy.courseGrades;
   delete legacy.gradeGoals;
   delete legacy.schoolSchedule;
   delete legacy.tombstones.grades;
@@ -59,6 +64,7 @@ test("legacy state gains assignment, grade, and rotation fields without losing w
 
   assert.equal(validState(state), true);
   assert.deepEqual(state.gradeItems, []);
+  assert.deepEqual(state.courseGrades, {});
   assert.deepEqual(state.gradeGoals, {});
   assert.deepEqual(state.schoolSchedule, { rotationLabels: ["A", "B"], anchorDate: "" });
   assert.equal(state.tasks[0].teacherInstructions, "Use MLA format.");
@@ -88,6 +94,7 @@ test("cloud state accepts rich assignment details, rotating periods, and grades"
     attachments: [{ id: "link-1", name: "Lab guide", url: "https://example.com/lab-guide" }]
   });
   state.gradeItems.push({ id: "grade-1", courseId: "algebra-2", title: "Quiz 1", score: 45, pointsPossible: 50, date: "2026-08-27" });
+  state.courseGrades["algebra-2"] = { percent: 90, period: "1st Semester", calculationMethod: 3, provider: "blackbaud", syncedAt: "2026-08-27T22:00:00.000Z" };
   state.gradeGoals["algebra-2"] = 90;
 
   assert.equal(validState(state), true);

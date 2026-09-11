@@ -1,5 +1,5 @@
-const CACHE = "daymark-v20";
-const FILES = ["./", "./index.html", "./styles.css?v=20", "./sync.js?v=20", "./school.js?v=20", "./app.js?v=20", "./icon.svg", "./manifest.webmanifest"];
+const CACHE = "daymark-v21";
+const FILES = ["./", "./index.html", "./styles.css?v=21", "./sync.js?v=21", "./school.js?v=21", "./app.js?v=21", "./icon.svg", "./manifest.webmanifest"];
 
 self.addEventListener("install", event => event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(FILES)).then(() => self.skipWaiting())));
 self.addEventListener("activate", event => event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE).map(key => caches.delete(key)))).then(() => self.clients.claim())));

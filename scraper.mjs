@@ -244,7 +244,28 @@ export async function googleAssignmentDetails(page, item) {
   return details;
 }
 
-function payload(provider, items) {
+function blackbaudCourseName(name) {
+  return [
+    ["Algebra 2", /\balgebra\s*(?:2|ii)\b/i], ["English 10", /\benglish\s*10\b/i],
+    ["The Church", /\bthe\s+church\b/i], ["Chemistry", /\bchemistry\b/i],
+    ["German 1", /\bgerman\s*(?:1|i)\b/i], ["Western Civ", /\bwestern\s+civ(?:ilization)?\b/i],
+    ["Band", /\b(?:concert\s+band(?:\s+ensemble)?|band)\b/i]
+  ].find(([, matcher]) => matcher.test(String(name || "")))?.[0] || "";
+}
+
+function blackbaudDateAndTime(value) {
+  const match = String(value || "").match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2})\s*(AM|PM))?/i);
+  if (!match) return { due: "", time: "23:59" };
+  let time = "23:59";
+  if (match[4]) {
+    let hour = Number(match[4]) % 12;
+    if (match[6].toUpperCase() === "PM") hour += 12;
+    time = `${String(hour).padStart(2, "0")}:${match[5]}`;
+  }
+  return { due: `${match[3]}-${match[1].padStart(2, "0")}-${match[2].padStart(2, "0")}`, time };
+}
+
+function payload(provider, items, extra = {}) {
   const canonical = provider === "google" ? "google-classroom" : "blackbaud";
   const unique = new Map();
   for (const item of items) {
@@ -253,38 +274,26 @@ function payload(provider, items) {
     const id = rawId && rawId.length <= 180 && /^[\w:.-]+$/.test(rawId) ? rawId : createHash("sha256").update(rawId || `${item.course}|${item.title}|${item.due}`).digest("hex").slice(0, 20);
     unique.set(String(id), { ...item, sourceId: String(id), courseSourceId: String(item.courseSourceId || item.course), courseName: item.course });
   }
-  const courses = [...new Map([...unique.values()].map(item => [item.courseSourceId, { sourceId: item.courseSourceId, name: item.course }])).values()];
-  return { provider: canonical, syncedAt: new Date().toISOString(), courses, assignments: [...unique.values()] };
+  const allCourseItems = [...unique.values(), ...(extra.grades || []), ...(extra.courseGrades || [])];
+  const courses = [...new Map(allCourseItems.filter(item => item.course && item.courseSourceId).map(item => [String(item.courseSourceId), { sourceId: String(item.courseSourceId), name: item.course }])).values()];
+  return { provider: canonical, syncedAt: new Date().toISOString(), courses, assignments: [...unique.values()], ...extra };
 }
 
 export function blackbaudAssignments(data) {
-  const courseFrom = name => [
-    ["Algebra 2", /\balgebra\s*(?:2|ii)\b/i], ["English 10", /\benglish\s*10\b/i],
-    ["The Church", /\bthe\s+church\b/i], ["Chemistry", /\bchemistry\b/i],
-    ["German 1", /\bgerman\s*(?:1|i)\b/i], ["Western Civ", /\bwestern\s+civ(?:ilization)?\b/i],
-    ["Band", /\b(?:concert\s+band(?:\s+ensemble)?|band)\b/i]
-  ].find(([, matcher]) => matcher.test(String(name || "")))?.[0] || "";
-  const dateAndTime = value => {
-    const match = String(value || "").match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
-    if (!match) return { due: "", time: "23:59" };
-    let hour = Number(match[4]) % 12;
-    if (match[6].toUpperCase() === "PM") hour += 12;
-    return { due: `${match[3]}-${match[1].padStart(2, "0")}-${match[2].padStart(2, "0")}`, time: `${String(hour).padStart(2, "0")}:${match[5]}` };
-  };
   const output = [];
   for (const group of Object.values(data || {})) {
     if (!Array.isArray(group)) continue;
     for (const item of group) {
       const sourceId = String(item?.AssignmentIndexId || "");
       const title = String(item?.ShortDescription || "").trim();
-      const course = courseFrom(item?.GroupName);
+      const course = blackbaudCourseName(item?.GroupName);
       if (!sourceId || !title || !course) continue;
       output.push({
         sourceId,
         courseSourceId: String(item.SectionId || item.GroupName),
         course,
         title,
-        ...dateAndTime(item.DateDue),
+        ...blackbaudDateAndTime(item.DateDue),
         type: String(item.AssignmentType || "Assignment"),
         completed: Number(item.AssignmentStatusType) === 1 || Number(item.StudentStatus) === 1 || Boolean(item.CollectedInd || item.ExemptInd || item.HasGrade),
         url: `https://oakgrovelutheran.myschoolapp.com/lms-assignment/assignment/assignment-student-view/${sourceId}`
@@ -292,6 +301,49 @@ export function blackbaudAssignments(data) {
     }
   }
   return output;
+}
+
+export function blackbaudGrades(data) {
+  const grades = [];
+  const courseGrades = [];
+  const gradebooks = new Map((data?.gradebooks || []).map(item => [String(item.sectionId), item.data]));
+  for (const section of data?.classes || []) {
+    const sectionId = String(section?.sectionid || section?.SectionId || section?.leadsectionid || section?.LeadSectionId || "");
+    const course = blackbaudCourseName(section?.sectionidentifier || section?.SectionIdentifier || section?.groupname || section?.GroupName);
+    const book = gradebooks.get(sectionId);
+    if (!sectionId || !course || !book) continue;
+    const roster = book.Roster?.[0] || {};
+    const rawPercent = roster.SectionGrade ?? section.cumgrade ?? section.CumGrade;
+    const percent = rawPercent === null || rawPercent === "" || rawPercent === undefined ? Number.NaN : Number(rawPercent);
+    if (Number.isFinite(percent)) courseGrades.push({
+      courseSourceId: sectionId,
+      course,
+      percent: Math.round(percent * 100) / 100,
+      period: String(section.currentterm || section.CurrentTerm || "Current marking period").slice(0, 80),
+      calculationMethod: Number(book.Summary?.CalculationMethod) || 0
+    });
+    const assignments = new Map((book.Assignments || []).map(item => [String(item.AssignmentId), item]));
+    for (const result of roster.AssignmentGrades || []) {
+      const assignment = assignments.get(String(result.AssignmentId));
+      const score = result.PointsEarned === null || result.PointsEarned === "" || result.PointsEarned === undefined ? Number.NaN : Number(result.PointsEarned);
+      const pointsPossible = Number(result.MaxPoints ?? assignment?.MaxPoints);
+      if (!assignment || assignment.PublishGrade === false || result.Exempt || !Number.isFinite(score) || !(pointsPossible > 0)) continue;
+      const sourceId = String(result.AssignmentIndexId || assignment.AssignmentIndexId || result.AssignmentId || "");
+      const title = String(assignment.AssignShort || assignment.AssignmentName || "").trim();
+      if (!sourceId || !title) continue;
+      grades.push({
+        sourceId,
+        courseSourceId: sectionId,
+        course,
+        title,
+        score,
+        pointsPossible,
+        date: blackbaudDateAndTime(assignment.SortDateDue || assignment.DateDue).due,
+        type: String(assignment.AssignmentType || result.AssignmentType || "Assignment").slice(0, 30)
+      });
+    }
+  }
+  return { grades, courseGrades };
 }
 
 async function scrapeGoogle(page) {
@@ -316,12 +368,36 @@ async function scrapeGoogle(page) {
 async function scrapeBlackbaud(page) {
   if (!/oakgrovelutheran\.myschoolapp\.com/i.test(page.url())) throw new Error("Finish signing into My Oak Grove, then try again.");
   const data = await page.evaluate(async () => {
-    const response = await fetch("/api/assignment2/StudentAssignmentCenterGet?displayByDueDate=true");
-    if (!response.ok) throw new Error(`Blackbaud returned HTTP ${response.status}`);
-    return response.json();
+    const get = async path => {
+      const response = await fetch(path);
+      if (!response.ok) throw new Error(`Blackbaud returned HTTP ${response.status}`);
+      return response.json();
+    };
+    const assignments = await get("/api/assignment2/StudentAssignmentCenterGet?displayByDueDate=true");
+    const status = await get("/api/webapp/userstatus");
+    const userId = status.UserId || status.userId;
+    const years = await get("/api/datadirect/StudentGradeLevelList/");
+    const currentYear = years.find(item => item.CurrentInd || item.currentInd) || years[0];
+    const schoolYear = currentYear?.SchoolYearLabel || currentYear?.schoolYearLabel;
+    if (!userId || !schoolYear) return { assignments, grades: { classes: [], gradebooks: [] } };
+    const terms = await get(`/api/DataDirect/StudentGroupTermList/?studentUserId=${encodeURIComponent(userId)}&schoolYearLabel=${encodeURIComponent(schoolYear)}&personaId=2`);
+    const currentTerm = terms.find(item => item.CurrentInd || item.currentInd) || terms[0];
+    const durationId = currentTerm?.DurationId || currentTerm?.durationId;
+    if (!durationId) return { assignments, grades: { classes: [], gradebooks: [] } };
+    const classes = await get(`/api/datadirect/ParentStudentUserClassesGet?userId=${encodeURIComponent(userId)}&schoolYearLabel=${encodeURIComponent(schoolYear)}&memberLevel=3&persona=2&durationList=${encodeURIComponent(durationId)}&markingPeriodId=`);
+    const gradebooks = await Promise.all(classes.map(async section => {
+      const sectionId = section.sectionid || section.SectionId || section.leadsectionid || section.LeadSectionId;
+      const markingPeriodId = section.markingperiodid || section.MarkingPeriodId || "";
+      if (!sectionId) return { sectionId: "", data: null };
+      try {
+        const book = await get(`/api/gradebook/hydrategradebook?sectionId=${encodeURIComponent(sectionId)}&markingPeriodId=${encodeURIComponent(markingPeriodId)}&sortAssignmentId=null&sortSkillPk=null&sortDesc=null&sortCumulative=null&studentUserId=${encodeURIComponent(userId)}&fromProgress=true`);
+        return { sectionId, data: book };
+      } catch { return { sectionId, data: null }; }
+    }));
+    return { assignments, grades: { classes, gradebooks } };
   });
-  const items = blackbaudAssignments(data);
-  return payload("blackbaud", items);
+  const items = blackbaudAssignments(data.assignments);
+  return payload("blackbaud", items, blackbaudGrades(data.grades));
 }
 
 export async function runScraper(provider, { foreground = true } = {}) {

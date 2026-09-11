@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
-import { assignProviderPage, blackbaudAssignments, googleAssignmentDetails, signedIn, visibleAssignments } from "./scraper.mjs";
+import { assignProviderPage, blackbaudAssignments, blackbaudGrades, googleAssignmentDetails, signedIn, visibleAssignments } from "./scraper.mjs";
 
 test("Google and Blackbaud keep independent browser tabs", async () => {
   const blank = { isClosed: () => false, url: () => "about:blank" };
@@ -63,6 +63,26 @@ test("Blackbaud API parsing includes future Band work", () => {
   assert.deepEqual(items.map(({ sourceId, courseSourceId, course, title, due, time, completed }) => ({ sourceId, courseSourceId, course, title, due, time, completed })), [{
     sourceId: "17070595", courseSourceId: "90275949", course: "Band", title: "Syllabus", due: "2026-09-14", time: "11:20", completed: false
   }]);
+});
+
+test("Blackbaud grade parsing keeps the official total and skips unpublished scores", () => {
+  const result = blackbaudGrades({
+    classes: [{ sectionid: 90239219, sectionidentifier: "Algebra II - 8 (8)", cumgrade: "84.48", currentterm: "1st Semester" }],
+    gradebooks: [{ sectionId: 90239219, data: {
+      Roster: [{ SectionGrade: 84.48, AssignmentGrades: [
+        { AssignmentId: 1, AssignmentIndexId: 11, PointsEarned: 14.5, MaxPoints: 15, Exempt: false },
+        { AssignmentId: 2, AssignmentIndexId: 12, PointsEarned: null, MaxPoints: 20, Exempt: false }
+      ] }],
+      Assignments: [
+        { AssignmentId: 1, AssignmentIndexId: 11, AssignShort: "1.0a WKST", SortDateDue: "9/2/2026 3:10 PM", PublishGrade: true, MaxPoints: 15, AssignmentType: "Homework" },
+        { AssignmentId: 2, AssignmentIndexId: 12, AssignShort: "1.0b WKST", SortDateDue: "9/3/2026 3:10 PM", PublishGrade: true, MaxPoints: 20, AssignmentType: "Homework" }
+      ],
+      Summary: { CalculationMethod: 3 }
+    } }]
+  });
+
+  assert.deepEqual(result.courseGrades, [{ courseSourceId: "90239219", course: "Algebra 2", percent: 84.48, period: "1st Semester", calculationMethod: 3 }]);
+  assert.deepEqual(result.grades, [{ sourceId: "11", courseSourceId: "90239219", course: "Algebra 2", title: "1.0a WKST", score: 14.5, pointsPossible: 15, date: "2026-09-02", type: "Homework" }]);
 });
 
 test("Google detail parsing extracts teacher instructions and useful attachments", async () => {
