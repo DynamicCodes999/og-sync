@@ -1,101 +1,109 @@
-# Daymark
+# OG Sync
 
-A private school planner with rich assignment details, rotating school-day schedules, a points-based grade tracker, calendar and planner views, a Pomodoro timer, focus history, duplicate-safe Google Classroom and Blackbaud imports, cross-device cloud state, PWA support, and JSON backups.
+OG Sync is a personal school dashboard that combines Google Classroom and My Oak Grove (Blackbaud) assignments, official grades, class schedules, planning, and focus tools in one browser app.
 
-## Planner features
+[Open the production app](https://daymark-dynamicdigital.vercel.app) · [View the public repository](https://github.com/DynamicCodes999/og-sync)
 
-- Open an assignment title to see teacher instructions, personal notes, subtasks, and secure `https://` attachment links. Google Classroom imports also collect descriptions and linked materials from the official assignment page; synced school-page links remain available beside the title.
-- Open **Classes → Configure A/B cycle** to name the two rotation days and choose a known first-day date. Edit each class to add its teacher, room, period, meeting days, times, and rotation. Weekends are skipped when the cycle is calculated.
-- Open **Grades** to record earned and possible points. Each class shows its running points percentage and a **What do I need next?** calculator. Weighted-category classes must still use the official school gradebook as the final result.
+## Features
 
-## Use Daymark at school
+- Automatic, duplicate-safe assignment imports from Google Classroom and Blackbaud
+- Automatic Blackbaud grade import with each teacher’s official current percentage, including weighted gradebooks
+- Teacher instructions, assignment links, personal notes, subtasks, and attachments
+- Planner views grouped by class, calendar views, assessment highlighting, and missing-work warnings
+- Morning brief with today’s classes, due work, upcoming tests, and estimated workload
+- White/Maroon block schedule with periods, rooms, and a next-class view
+- Custom Pomodoro work time, break time, block count, transition bell, and focus history
+- Light and dark themes, responsive layout, PWA installation, JSON backups, and cross-device cloud state
 
-Production: [https://daymark-dynamicdigital.vercel.app](https://daymark-dynamicdigital.vercel.app)
+## How automatic sync works
 
-On a new device:
+Vercel hosts the app and its authenticated state API. A trusted Mac runs the local helper, keeps the Google and Blackbaud sessions in `.data/scraper-profile`, and sends normalized school data to private Vercel Blob storage.
 
-1. Open the production URL.
+The helper checks both providers every minute while the Mac is awake and online. Google and Blackbaud use separate tabs, so one provider failing does not block the other. The hosted app checks for cloud updates every 15 seconds while open.
+
+Blackbaud supplies the official course percentage and published assignment scores. OG Sync does not recalculate weighted grades from raw points. Repeated grade imports update the existing record instead of creating duplicates.
+
+If the Mac is asleep or offline, the hosted app continues working with its latest cloud state. Imports resume automatically when the Mac wakes; no Codex prompt is required.
+
+## Use OG Sync on another computer
+
+1. Open [OG Sync](https://daymark-dynamicdigital.vercel.app).
 2. On the trusted Mac, open Terminal in this project and run:
 
    ```bash
    grep '^DAYMARK_SYNC_KEY=' .env.local
    ```
 
-3. Copy only the value after `=` into Daymark’s **Connect this device** window.
-4. Keep that key in a password manager. It is the Daymark key, not a Google, Blackbaud, or school password.
+3. Copy only the value after `=` into the **OG Sync key** field.
+4. Do not save the key on a shared computer.
 
-The key is stored in that browser until **Sync & import → Change sync key** is selected or site data is cleared. Do not save it on a shared school computer.
+This is an OG Sync access key, not a Google, Blackbaud, or school password. Remove it from a browser with **Sync & import → Change sync key** or by clearing the site’s browser data.
 
-## How production sync works
-
-- Vercel hosts the interface and an authenticated state API.
-- A private Vercel Blob stores normalized planner data.
-- The trusted Mac keeps Google and Blackbaud sessions under `.data/scraper-profile` and sends only classes, assignments, URLs, completion state, published grades, official course percentages, and sync timestamps.
-- The Mac helper starts at login and checks both providers every minute while the Mac is awake and online.
-- The Google Classroom and Blackbaud sessions stay open in separate tabs; one provider failing does not block the other.
-- The hosted app refreshes cloud state every 15 seconds while open.
-- If the Mac is off, the hosted planner still works with the last successful cloud state; new school imports resume after the Mac comes back online.
-
-The helper is already installed on this Mac. Useful commands:
-
-```bash
-npm run helper:install
-npm run helper:uninstall
-tail -f .data/helper.log .data/helper-error.log
-```
-
-## School sign-ins
-
-Passwords must only be entered on the official provider pages opened by the local Daymark helper.
-
-1. Run `npm start` if the helper is not running.
-2. Open [http://localhost:4173/#sync](http://localhost:4173/#sync).
-3. Select **Open sign-in browser** for Google Classroom or My Oak Grove.
-4. Finish sign-in in the dedicated Chromium window.
-5. Select **Import now**.
-
-The saved sessions are reused by automatic imports. Delete `.data/scraper-profile` only when intentionally signing the helper out of both services.
-
-## Duplicate and deletion rules
-
-Daymark first matches each provider’s stable assignment ID. If Google and Blackbaud expose the same work under different IDs, it falls back to normalized title + matched class + due date. Repeated imports update one task. A different class or due date remains separate.
-
-Deleting imported work creates a deletion marker, so the next automatic import does not recreate it. Cloud writes use revision checks; if two devices change state at once, Daymark merges the fresh import and the user edit instead of silently overwriting either one.
-
-## Local development
+## Local setup
 
 Requires Node.js 20 or newer.
 
 ```bash
+git clone https://github.com/DynamicCodes999/og-sync.git
+cd og-sync
 npm install
 npx playwright install chromium
-npm start
+cp .env.example .env.local
 ```
 
-Open [http://localhost:4173](http://localhost:4173). Local planner state stays in that browser, while signed-in scraper sessions stay in `.data/scraper-profile`.
-
-## Vercel configuration
-
-The private `dynamicdigital/daymark` Vercel project is connected to the private GitHub repository. It uses:
-
-- `DAYMARK_SYNC_KEY`: sensitive random bearer key for the state API.
-- `BLOB_READ_WRITE_TOKEN`: Vercel-managed private Blob credential.
-- `DAYMARK_CLOUD_URL`: development-only URL used by the Mac bridge.
-
-Deploy manually when needed:
+Configure `.env.local`, then install the background helper:
 
 ```bash
-npx vercel@latest build --prod
-npx vercel@latest deploy --prebuilt --prod --yes
+npm run helper:install
 ```
 
-Never commit `.env`, `.env.local`, `.data`, or `.vercel`. Never place school passwords, MFA codes, or provider cookies in Vercel.
+Open [http://localhost:4173/#sync](http://localhost:4173/#sync), open each provider’s sign-in browser, and sign in only on the official Google Classroom and My Oak Grove pages. Never enter school credentials into OG Sync itself.
 
-## Verify
+Run `npm start` instead when you want the helper in the foreground. Useful maintenance commands:
+
+```bash
+npm run helper:uninstall
+tail -f .data/helper.log .data/helper-error.log
+```
+
+## Vercel setup
+
+Create a Vercel project from this repository and add private Blob storage. Configure these environment variables in Vercel:
+
+- `DAYMARK_SYNC_KEY`: a random private bearer key containing at least 32 characters
+- `BLOB_READ_WRITE_TOKEN`: the Vercel-managed private Blob credential
+
+Generate a sync key with `openssl rand -base64 32`. Store the same result in Vercel and on the trusted Mac; never commit it.
+
+Configure the trusted Mac in `.env.local` with the same key:
+
+```dotenv
+DAYMARK_CLOUD_URL=https://your-project.vercel.app
+DAYMARK_SYNC_KEY=your-random-private-key
+DAYMARK_AUTO_SYNC_SECONDS=60
+```
+
+The `DAYMARK_*` names are retained internally for deployment compatibility.
+
+## Privacy and security
+
+The repository is public, but user data and credentials are not part of it. `.env`, `.env.local`, `.data`, `.vercel`, and build dependencies are ignored by Git.
+
+The cloud receives only classes, assignments, secure assignment URLs, completion state, published grades, official course percentages, and sync timestamps. Google and Blackbaud passwords, cookies, MFA codes, and browser profiles remain on the trusted Mac.
+
+Never commit `.env`, `.env.local`, `.data`, or `.vercel`. Rotate `DAYMARK_SYNC_KEY` immediately if it is exposed.
+
+## Duplicate and deletion rules
+
+OG Sync first matches a provider’s stable assignment or grade ID. Assignments appearing in both providers fall back to normalized title, matched class, and due date. A different class or due date remains separate.
+
+Deleting imported work creates a deletion marker so the next import does not recreate it. Revision checks merge concurrent cloud changes instead of silently overwriting them.
+
+## Verify changes
 
 ```bash
 npm test
 npm run build
 ```
 
-The tests cover duplicate protection, provider ID stability, deleted-import behavior, conflicting device writes, rich assignment and grade state, A/B rotation logic, grade calculations, current-class filtering, due-date parsing, and the future Band syllabus assignment.
+The test suite covers provider parsing, automatic grades, duplicate protection, deletion behavior, cloud conflicts, assignment details, block rotation, focus cycles, missing-work detection, and date handling.
