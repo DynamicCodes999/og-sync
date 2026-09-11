@@ -1,3 +1,5 @@
+<img src="./OG_Sync.svg" alt="OG Sync logo" width="160" />
+
 # OG Sync
 
 OG Sync is a personal school dashboard that combines Google Classroom and My Oak Grove (Blackbaud) assignments, official grades, class schedules, planning, and focus tools in one browser app.

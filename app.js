@@ -256,7 +256,7 @@ function playTimerBell() {
 function announceTimerTransition(title, body) {
   if (!timerAlerts) return;
   playTimerBell();
-  if (document.hidden && "Notification" in window && Notification.permission === "granted") new Notification(title, { body, icon: "./icon.svg" });
+  if (document.hidden && "Notification" in window && Notification.permission === "granted") new Notification(title, { body, icon: "./OG_Sync.svg" });
 }
 
 async function toggleTimerAlerts() {

@@ -6,17 +6,15 @@
     <meta name="theme-color" content="#f8f8f5" />
     <meta name="description" content="A personal planner for classes, assignments, grades, and focus sessions." />
     <link rel="manifest" href="./manifest.webmanifest" />
-    <link rel="icon" href="./icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="./styles.css?v=22" />
+    <link rel="icon" href="./OG_Sync.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./styles.css?v=23" />
     <title>OG Sync | School planner</title>
   </head>
   <body>
     <div class="app-shell">
       <aside class="sidebar" aria-label="Primary navigation">
         <a class="brand" href="#dashboard" aria-label="OG Sync dashboard">
-          <span class="brand-mark" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M7 3.8h8.2A3.8 3.8 0 0 1 19 7.6V20l-7-3.5L5 20V5.8A2 2 0 0 1 7 3.8Z"/><path d="m9 9 2 2 4-4"/></svg>
-          </span>
+          <span class="brand-mark" aria-hidden="true"><img src="./OG_Sync.svg" alt="" width="800" height="800" /></span>
           <span>OG Sync<small>Schoolwork in one place.</small></span>
         </a>
 
@@ -54,7 +52,7 @@
 
       <main class="main">
         <header class="topbar">
-          <div class="mobile-brand"><span class="brand-mark"><svg viewBox="0 0 24 24"><path d="M7 3.8h8.2A3.8 3.8 0 0 1 19 7.6V20l-7-3.5L5 20V5.8A2 2 0 0 1 7 3.8Z"/><path d="m9 9 2 2 4-4"/></svg></span><strong>OG Sync</strong></div>
+          <div class="mobile-brand"><span class="brand-mark"><img src="./OG_Sync.svg" alt="" width="800" height="800" /></span><strong>OG Sync</strong></div>
           <span class="topbar-date" id="topbar-date"></span>
           <div class="topbar-actions">
             <button class="icon-button" id="theme-button" type="button" aria-label="Use dark mode" title="Use dark mode"></button>
@@ -164,8 +162,8 @@
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <input id="import-input" type="file" accept="application/json,.json" hidden />
-    <script src="./sync.js?v=22"></script>
-    <script src="./school.js?v=22"></script>
-    <script src="./app.js?v=22"></script>
+    <script src="./sync.js?v=23"></script>
+    <script src="./school.js?v=23"></script>
+    <script src="./app.js?v=23"></script>
   </body>
 </html>
