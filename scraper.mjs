@@ -10,6 +10,7 @@ const PROVIDERS = {
 };
 
 let context;
+let contextHeadless = false;
 const pages = new Map();
 
 function validProvider(provider) {
@@ -27,16 +28,19 @@ async function createPage(browser) {
   }
 }
 
-async function browserContext() {
-  if (context) return context;
+async function browserContext({ foreground = true } = {}) {
+  if (context && (!foreground || !contextHeadless)) return context;
+  if (context) await context.close();
   await mkdir(PROFILE_DIR, { recursive: true, mode: 0o700 });
+  contextHeadless = !foreground;
   context = await chromium.launchPersistentContext(PROFILE_DIR, {
-    headless: false,
-    viewport: null,
-    args: ["--start-maximized"]
+    headless: contextHeadless,
+    ...(contextHeadless
+      ? { viewport: { width: 1440, height: 900 } }
+      : { viewport: null, args: ["--start-maximized"] })
   });
   while (context.pages().length < Object.keys(PROVIDERS).length) await createPage(context);
-  context.on("close", () => { context = undefined; pages.clear(); });
+  context.on("close", () => { context = undefined; contextHeadless = false; pages.clear(); });
   return context;
 }
 
@@ -64,7 +68,7 @@ export function signedIn(provider, page) {
 
 export async function openScraper(provider, { foreground = true } = {}) {
   validProvider(provider);
-  const browser = await browserContext();
+  const browser = await browserContext({ foreground });
   let page = livePage(provider);
   if (!page) {
     page = await assignProviderPage(provider, browser);
