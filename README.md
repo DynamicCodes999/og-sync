@@ -21,7 +21,7 @@ OG Sync is a personal school dashboard that combines Google Classroom and My Oak
 
 Vercel hosts the app and its authenticated state API. A trusted Mac runs the local helper, keeps the Google and Blackbaud sessions in `.data/scraper-profile`, and sends normalized school data to private Vercel Blob storage.
 
-The helper checks both providers every minute while the Mac is awake and online. Automatic checks run in headless Chromium, so they do not open a window or steal focus; a visible browser opens only when you explicitly choose a provider sign-in action. Google and Blackbaud use separate tabs, so one provider failing does not block the other. The hosted app checks for cloud updates every 15 seconds while open.
+The helper checks both providers every minute while the Mac is awake and online. Automatic checks run in headless Chromium, so they do not open a window or steal focus. A visible browser opens only when you explicitly choose a provider sign-in action, then closes back into headless mode on the next sync. Google and Blackbaud use separate tabs, so one provider failing does not block the other. The hosted app checks for cloud updates every 15 seconds while open.
 
 Blackbaud supplies the official course percentage and published assignment scores. OG Sync does not recalculate weighted grades from raw points. Repeated grade imports update the existing record instead of creating duplicates.
 

@@ -756,7 +756,7 @@ function paintSyncProvider(provider, status = syncServerStatus, error = "") {
   pill.textContent = "Signed in";
   pill.classList.add("connected");
   actions.innerHTML = `<button class="button button-dark" data-sync-provider="${provider}">Import now</button><button class="button button-quiet" data-open-scraper="${provider}">Show browser</button>`;
-  detail.textContent = `${provider === "blackbaud" ? "OG Sync reads your signed-in Assignment Center. " : "OG Sync checks Assigned, Missing, and Done views. "}${lastSyncText(provider)}`;
+  detail.textContent = `${provider === "blackbaud" ? "OG Sync reads your signed-in Assignment Center. " : "OG Sync checks Assigned and Missing work. "}${lastSyncText(provider)}`;
 }
 
 async function readSyncStatus() {
@@ -829,7 +829,7 @@ async function autoSync() {
   try {
     const status = await readSyncStatus();
     for (const provider of Object.keys(syncProviderNames)) {
-      if (!status.scraper?.pages?.[provider]?.open) continue;
+      if (!status.scraper?.pages?.[provider]?.signedIn) continue;
       const last = Date.parse(state.sync?.[syncStateKeys[provider]]?.lastSyncedAt || "");
       if (!Number.isFinite(last) || Date.now() - last >= 15 * 60_000) await runSync(provider, { silent: true });
     }

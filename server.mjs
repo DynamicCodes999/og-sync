@@ -129,7 +129,7 @@ async function handle(req, res) {
   }
   const syncProvider = url.pathname.match(/^\/api\/sync\/(google|blackbaud)$/)?.[1];
   if (req.method === "POST" && syncProvider) {
-    try { return sendJson(res, 200, await scrapeAndPush(syncProvider)); }
+    try { return sendJson(res, 200, await scrapeAndPush(syncProvider, { foreground: false })); }
     catch (error) { return sendJson(res, 502, { error: error.message }); }
   }
   sendJson(res, 404, { error: "Not found" });

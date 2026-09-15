@@ -29,7 +29,7 @@ async function createPage(browser) {
 }
 
 async function browserContext({ foreground = true } = {}) {
-  if (context && (!foreground || !contextHeadless)) return context;
+  if (context && foreground === !contextHeadless) return context;
   if (context) await context.close();
   await mkdir(PROFILE_DIR, { recursive: true, mode: 0o700 });
   contextHeadless = !foreground;
@@ -406,8 +406,10 @@ async function scrapeBlackbaud(page) {
 
 export async function runScraper(provider, { foreground = true } = {}) {
   validProvider(provider);
+  await openScraper(provider, { foreground });
   const page = livePage(provider);
   if (!page) throw new Error(`Open the ${provider === "google" ? "Google Classroom" : "My Oak Grove"} sign-in browser first.`);
+  if (!signedIn(provider, page)) throw new Error(`Finish signing into ${provider === "google" ? "Google Classroom" : "My Oak Grove"}, then try again.`);
   if (foreground) await page.bringToFront();
   return provider === "google" ? scrapeGoogle(page) : scrapeBlackbaud(page);
 }
