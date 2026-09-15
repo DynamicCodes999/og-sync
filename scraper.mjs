@@ -30,6 +30,7 @@ async function createPage(browser) {
 
 async function browserContext({ foreground = true } = {}) {
   if (context && foreground === !contextHeadless) return context;
+  if (context && !foreground && !contextHeadless && [...pages].some(([provider, page]) => !signedIn(provider, page))) return context;
   if (context) await context.close();
   await mkdir(PROFILE_DIR, { recursive: true, mode: 0o700 });
   contextHeadless = !foreground;
@@ -409,6 +410,7 @@ export async function runScraper(provider, { foreground = true } = {}) {
   await openScraper(provider, { foreground });
   const page = livePage(provider);
   if (!page) throw new Error(`Open the ${provider === "google" ? "Google Classroom" : "My Oak Grove"} sign-in browser first.`);
+  await page.waitForTimeout(500);
   if (!signedIn(provider, page)) throw new Error(`Finish signing into ${provider === "google" ? "Google Classroom" : "My Oak Grove"}, then try again.`);
   if (foreground) await page.bringToFront();
   return provider === "google" ? scrapeGoogle(page) : scrapeBlackbaud(page);
