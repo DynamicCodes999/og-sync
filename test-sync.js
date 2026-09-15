@@ -73,6 +73,26 @@ test("decodes HTML entities in imported assignment titles", () => {
   assert.equal(state.tasks[0].title, "Electron Configuration (long&short)");
 });
 
+test("provider refreshes never change the local completion checkbox", () => {
+  const state = workspace();
+  const payload = {
+    provider: "google-classroom",
+    courses: [{ sourceId: "algebra", name: "Algebra 2" }],
+    assignments: [{ sourceId: "algebra:review", courseSourceId: "algebra", title: "Unit review", due: "2026-09-21", completed: false }]
+  };
+  mergeImported(state, payload, () => "1");
+  assert.equal(state.tasks[0].completed, false);
+
+  payload.assignments[0].completed = true;
+  mergeImported(state, payload, () => "2");
+  assert.equal(state.tasks[0].completed, false);
+
+  state.tasks[0].completed = true;
+  payload.assignments[0].completed = false;
+  mergeImported(state, payload, () => "3");
+  assert.equal(state.tasks[0].completed, true);
+});
+
 test("automatic grades update without duplicates and keep Blackbaud's official total", () => {
   const state = workspace();
   let id = 0;

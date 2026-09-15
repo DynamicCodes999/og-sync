@@ -92,7 +92,7 @@
       type: String(remote.type || "Assignment").trim().slice(0, 30),
       estimate: 25,
       priority: /test|exam|project/i.test(remote.type || "") ? "high" : "normal",
-      completed: Boolean(remote.completed),
+      completed: false,
       url: /^https:\/\//.test(remote.url || "") ? remote.url : "",
       ...(teacherInstructions ? { teacherInstructions } : {}),
       ...(attachments.length ? { attachments } : {}),
@@ -150,7 +150,7 @@
         const attachments = next.attachments || [];
         delete next.attachments;
         const wasCompleted = task.completed;
-        Object.assign(task, next, { completed: wasCompleted || next.completed });
+        Object.assign(task, next, { completed: wasCompleted });
         task.attachments ||= [];
         for (const attachment of attachments) {
           const existing = task.attachments.find(item => item.url === attachment.url);

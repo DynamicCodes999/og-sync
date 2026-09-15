@@ -299,7 +299,7 @@ export function blackbaudAssignments(data) {
         title,
         ...blackbaudDateAndTime(item.DateDue),
         type: String(item.AssignmentType || "Assignment"),
-        completed: Number(item.AssignmentStatusType) === 1 || Number(item.StudentStatus) === 1 || Boolean(item.CollectedInd || item.ExemptInd || item.HasGrade),
+        completed: false,
         url: `https://oakgrovelutheran.myschoolapp.com/lms-assignment/assignment/assignment-student-view/${sourceId}`
       });
     }
@@ -352,7 +352,7 @@ export function blackbaudGrades(data) {
 
 async function scrapeGoogle(page) {
   const items = [];
-  for (const [path, completed] of [["not-turned-in", false], ["missing", false], ["turned-in", true]]) {
+  for (const [path, completed] of [["not-turned-in", false], ["missing", false]]) {
     await page.goto(`https://classroom.google.com/a/${path}/all`, { waitUntil: "domcontentloaded", timeout: 30_000 }).catch(() => {});
     if (!page.url().startsWith("https://classroom.google.com/")) throw new Error("Finish signing into Google Classroom in the scraper browser, then try again.");
     await page.waitForTimeout(1_000);

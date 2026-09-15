@@ -58,7 +58,7 @@ test("Blackbaud API parsing includes future Band work", () => {
   const items = blackbaudAssignments({ DueAfterNextWeek: [{
     GroupName: "Concert Band - 2", SectionId: 90275949, AssignmentIndexId: 17070595,
     ShortDescription: "Syllabus", DateDue: "9/14/2026 11:20 AM", AssignmentType: "Participation",
-    AssignmentStatusType: -1, StudentStatus: -2147483648
+    AssignmentStatusType: 1, StudentStatus: 1, CollectedInd: true, HasGrade: true
   }] });
   assert.deepEqual(items.map(({ sourceId, courseSourceId, course, title, due, time, completed }) => ({ sourceId, courseSourceId, course, title, due, time, completed })), [{
     sourceId: "17070595", courseSourceId: "90275949", course: "Band", title: "Syllabus", due: "2026-09-14", time: "11:20", completed: false
