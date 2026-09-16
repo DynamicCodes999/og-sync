@@ -10,7 +10,6 @@ const PROVIDERS = {
 };
 
 let context;
-let contextHeadless = false;
 const pages = new Map();
 
 function validProvider(provider) {
@@ -28,21 +27,26 @@ async function createPage(browser) {
   }
 }
 
-async function browserContext({ foreground = true } = {}) {
-  if (context && foreground === !contextHeadless) return context;
-  if (context && !foreground && !contextHeadless && [...pages].some(([provider, page]) => !signedIn(provider, page))) return context;
-  if (context) await context.close();
+async function browserContext() {
+  if (context) return context;
   await mkdir(PROFILE_DIR, { recursive: true, mode: 0o700 });
-  contextHeadless = !foreground;
   context = await chromium.launchPersistentContext(PROFILE_DIR, {
-    headless: contextHeadless,
-    ...(contextHeadless
-      ? { viewport: { width: 1440, height: 900 } }
-      : { viewport: null, args: ["--start-maximized"] })
+    headless: false,
+    viewport: null,
+    args: ["--start-minimized"]
   });
   while (context.pages().length < Object.keys(PROVIDERS).length) await createPage(context);
-  context.on("close", () => { context = undefined; contextHeadless = false; pages.clear(); });
+  context.on("close", () => { context = undefined; pages.clear(); });
   return context;
+}
+
+async function setWindowState(page, windowState) {
+  const session = await context.newCDPSession(page);
+  try {
+    const { windowId } = await session.send("Browser.getWindowForTarget");
+    const bounds = windowState === "normal" ? { windowState, left: 80, top: 80, width: 1280, height: 900 } : { windowState };
+    await session.send("Browser.setWindowBounds", { windowId, bounds });
+  } finally { await session.detach(); }
 }
 
 function livePage(provider) {
@@ -69,13 +73,16 @@ export function signedIn(provider, page) {
 
 export async function openScraper(provider, { foreground = true } = {}) {
   validProvider(provider);
-  const browser = await browserContext({ foreground });
+  const browser = await browserContext();
   let page = livePage(provider);
   if (!page) {
     page = await assignProviderPage(provider, browser);
     await page.goto(PROVIDERS[provider], { waitUntil: "domcontentloaded", timeout: 30_000 }).catch(() => {});
   }
-  if (foreground) await page.bringToFront();
+  if (foreground) {
+    await setWindowState(page, "normal");
+    await page.bringToFront();
+  }
   return { provider, url: page.url() };
 }
 
@@ -413,6 +420,7 @@ export async function runScraper(provider, { foreground = true } = {}) {
   await page.waitForTimeout(500);
   if (!signedIn(provider, page)) throw new Error(`Finish signing into ${provider === "google" ? "Google Classroom" : "My Oak Grove"}, then try again.`);
   if (foreground) await page.bringToFront();
+  else await setWindowState(page, "minimized");
   return provider === "google" ? scrapeGoogle(page) : scrapeBlackbaud(page);
 }
 

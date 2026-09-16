@@ -30,6 +30,8 @@ const document = `<?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0"><dict>
   <key>Label</key><string>${label}</string>
   <key>ProgramArguments</key><array>
+    <string>/usr/bin/caffeinate</string>
+    <string>-s</string>
     <string>${escape(process.execPath)}</string>
     <string>--env-file-if-exists=.env</string>
     <string>--env-file-if-exists=.env.local</string>

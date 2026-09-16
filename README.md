@@ -21,11 +21,11 @@ OG Sync is a personal school dashboard that combines Google Classroom and My Oak
 
 Vercel hosts the app and its authenticated state API. A trusted Mac runs the local helper, keeps the Google and Blackbaud sessions in `.data/scraper-profile`, and sends normalized school data to private Vercel Blob storage.
 
-The helper checks both providers every minute while the Mac is awake and online. Automatic checks run in headless Chromium, so they do not open a window or steal focus. A visible browser opens only when you explicitly choose a provider sign-in action, then closes back into headless mode on the next sync. Google and Blackbaud use separate tabs, so one provider failing does not block the other. The hosted app checks for cloud updates every 15 seconds while open.
+The helper checks both providers every minute while the Mac is awake and online. It keeps one authenticated Chromium session minimized so Blackbaud stays signed in without stealing focus. A visible browser appears only when you explicitly choose a provider sign-in action, then minimizes on the next successful sync. Google and Blackbaud use separate tabs, so one provider failing does not block the other. The hosted app checks for cloud updates every 15 seconds while open.
 
 Blackbaud supplies the official course percentage and published assignment scores. OG Sync does not recalculate weighted grades from raw points. Repeated grade imports update the existing record instead of creating duplicates.
 
-If the Mac is asleep or offline, the hosted app continues working with its latest cloud state. Imports resume automatically when the Mac wakes; no Codex prompt is required.
+The helper prevents idle sleep while the Mac is plugged into power. Keep the lid open and the Mac online during school; closing the lid still suspends imports. If the Mac is asleep or offline, the hosted app continues working with its latest cloud state. Imports resume automatically when the Mac wakes; no Codex prompt is required.
 
 ## Use OG Sync on another computer
 
