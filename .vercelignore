@@ -1,0 +1,9 @@
+.data
+.env
+.env.*
+.git
+.vercel
+node_modules
+dist
+test-*.js
+test-*.mjs
