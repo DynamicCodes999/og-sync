@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { extname, join } from "node:path";
-import { cloudConfigured, pushImport } from "./cloud-bridge.mjs";
+import { cloudConfigured, pushAssignmentCache, pushImport } from "./cloud-bridge.mjs";
 import { closeScraper, inspectScraper, openScraper, runScraper, scraperStatus } from "./scraper.mjs";
 
 const ROOT = new URL(".", import.meta.url).pathname;
@@ -76,7 +76,10 @@ async function scrapeAndPush(provider, options) {
   const payload = await runScraper(provider, options);
   try {
     const cloud = await pushImport(payload);
-    return { ...payload, cloud };
+    const { state, ...summary } = cloud;
+    // This cache is optional, so it never delays or breaks the planner sync.
+    if (state) void pushAssignmentCache(state).catch(() => {});
+    return { ...payload, cloud: summary };
   } catch (error) {
     return { ...payload, cloud: { configured: true, error: error.message } };
   }

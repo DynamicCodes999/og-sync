@@ -87,6 +87,19 @@ DAYMARK_AUTO_SYNC_SECONDS=60
 
 The `DAYMARK_*` names are retained internally for deployment compatibility.
 
+## AI agent assignment cache
+
+Set `OGSYNC_API_KEY` in Vercel to a random secret with at least 32 characters. Put the same value in the trusted Mac helper environment and your home server environment. After every successful school sync, the helper quietly refreshes a separate assignment cache; cache failures never interrupt OG Sync itself.
+
+Read the cache with either an `X-OGSync-API-Key` header, a bearer token, or a `key` query parameter:
+
+```bash
+curl -H "X-OGSync-API-Key: $OGSYNC_API_KEY" \
+  https://daymark-dynamicdigital.vercel.app/api/assignments
+```
+
+The response contains `lastSynced` and assignments with only `title`, `class`, `due`, and `status`. The write route is `POST /api/assignments/sync`; it uses the same secret and is called automatically by the Mac helper.
+
 ## Privacy and security
 
 The repository is public, but user data and credentials are not part of it. `.env`, `.env.local`, `.data`, `.vercel`, and build dependencies are ignored by Git.
