@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
-import { assignProviderPage, blackbaudAssignments, blackbaudGrades, googleAssignmentDetails, signedIn, visibleAssignments } from "./scraper.mjs";
+import { assignProviderPage, blackbaudAssignments, blackbaudGrades, googleAssignmentDetails, signedIn, visibleAssignments, visibleGoogleMaterials } from "./scraper.mjs";
 
 test("Google and Blackbaud keep independent browser tabs", async () => {
   const blank = { isClosed: () => false, url: () => "about:blank" };
@@ -58,11 +58,16 @@ test("Blackbaud API parsing includes future Band work", () => {
   const items = blackbaudAssignments({ DueAfterNextWeek: [{
     GroupName: "Concert Band - 2", SectionId: 90275949, AssignmentIndexId: 17070595,
     ShortDescription: "Syllabus", DateDue: "9/14/2026 11:20 AM", AssignmentType: "Participation",
+    LongDescription: "<p>Read every section.</p>", Instructions: "Bring the signed page.",
+    Attachments: [{ FileName: "Band handbook", DownloadUrl: "/files/band-handbook.pdf" }],
     AssignmentStatusType: 1, StudentStatus: 1, CollectedInd: true, HasGrade: true
   }] });
   assert.deepEqual(items.map(({ sourceId, courseSourceId, course, title, due, time, completed }) => ({ sourceId, courseSourceId, course, title, due, time, completed })), [{
     sourceId: "17070595", courseSourceId: "90275949", course: "Band", title: "Syllabus", due: "2026-09-14", time: "11:20", completed: false
   }]);
+  assert.equal(items[0].description, "Read every section.");
+  assert.equal(items[0].teacherInstructions, "Bring the signed page.");
+  assert.equal(items[0].attachments[0].url, "https://oakgrovelutheran.myschoolapp.com/files/band-handbook.pdf");
 });
 
 test("Blackbaud grade parsing keeps the official total and skips unpublished scores", () => {
@@ -100,5 +105,19 @@ test("Google detail parsing extracts teacher instructions and useful attachments
     assert.equal(details.description, "Build a labeled model. Explain how each organelle helps the cell.");
     assert.deepEqual(details.attachments.map(({ name, url }) => ({ name, url })), [{ name: "Cell model guide", url: "https://docs.google.com/document/d/model-guide/edit" }]);
     assert.match(details.attachments[0].id, /^google-[a-f0-9]{20}$/);
+  } finally { await browser.close(); }
+});
+
+test("Google classwork parsing collects material links and resources", async () => {
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage();
+  try {
+    await page.setContent(`<base href="https://classroom.google.com"><main><article>
+      <a href="/c/course-1/m/material-1/details">Study resources</a>
+      <a href="https://docs.google.com/document/d/review/edit">Review sheet</a>
+    </article></main>`);
+    const materials = await visibleGoogleMaterials(page, { sourceId: "course-1", name: "Chemistry" });
+    assert.deepEqual(materials.map(({ sourceId, class: className, title }) => ({ sourceId, class: className, title })), [{ sourceId: "course-1:material-1", class: "Chemistry", title: "Study resources" }]);
+    assert.equal(materials[0].resources[0].url, "https://docs.google.com/document/d/review/edit");
   } finally { await browser.close(); }
 });

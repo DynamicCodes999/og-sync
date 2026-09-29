@@ -98,13 +98,13 @@ curl -H "X-OGSync-API-Key: $OGSYNC_API_KEY" \
   https://daymark-dynamicdigital.vercel.app/api/assignments
 ```
 
-The response contains `lastSynced` and assignments with only `title`, `class`, `due`, and `status`. The write route is `POST /api/assignments/sync`; it uses the same secret and is called automatically by the Mac helper.
+The response contains `lastSynced`, detailed assignments, and Google Classroom class materials. Assignment records include class and teacher context, due date and time, status, type, priority, estimate, source URL, description, teacher instructions, personal notes, and validated file or resource links. The write route is `POST /api/assignments/sync`; it uses the same secret and is called automatically by the Mac helper.
 
 ## Privacy and security
 
 The repository is public, but user data and credentials are not part of it. `.env`, `.env.local`, `.data`, `.vercel`, and build dependencies are ignored by Git.
 
-The cloud receives only classes, assignments, secure assignment URLs, completion state, published grades, official course percentages, and sync timestamps. Google and Blackbaud passwords, cookies, MFA codes, and browser profiles remain on the trusted Mac.
+The cloud receives classes, assignments, descriptions and instructions, resource links, personal planner notes, completion state, published grades, official course percentages, and sync timestamps. Google and Blackbaud passwords, cookies, MFA codes, and browser profiles remain on the trusted Mac.
 
 Never commit `.env`, `.env.local`, `.data`, or `.vercel`. Rotate `DAYMARK_SYNC_KEY` immediately if it is exposed.
 

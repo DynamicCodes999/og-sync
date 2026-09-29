@@ -78,7 +78,7 @@ async function scrapeAndPush(provider, options) {
     const cloud = await pushImport(payload);
     const { state, ...summary } = cloud;
     // This cache is optional, so it never delays or breaks the planner sync.
-    if (state) void pushAssignmentCache(state).catch(() => {});
+    if (state) void pushAssignmentCache(state, payload).catch(() => {});
     return { ...payload, cloud: summary };
   } catch (error) {
     return { ...payload, cloud: { configured: true, error: error.message } };

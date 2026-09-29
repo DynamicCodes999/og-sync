@@ -2,8 +2,9 @@ import { timingSafeEqual } from "node:crypto";
 import { get, put } from "@vercel/blob";
 
 const CACHE_PATH = "og-sync/assignments.json";
-const MAX_BODY = 1_000_000;
+const MAX_BODY = 4_000_000;
 const MAX_ASSIGNMENTS = 5_000;
+const MAX_MATERIALS = 500;
 
 function send(res, status, value) {
   res.writeHead(status, {
@@ -51,16 +52,68 @@ export function normalizeAssignments(input) {
     const due = String(item?.due || "").trim();
     const status = String(item?.status || "").trim();
     if (!title || title.length > 200 || !className || className.length > 100 || due.length > 40 || !["open", "completed"].includes(status)) throw Object.assign(new Error("Invalid assignment"), { status: 400 });
-    return { title, class: className, due, status };
+    const assignment = {
+      title,
+      class: className,
+      teacher: safeText(item?.teacher, 100),
+      room: safeText(item?.room, 60),
+      due,
+      time: safeText(item?.time, 10),
+      status,
+      type: safeText(item?.type, 40),
+      priority: safeText(item?.priority, 20),
+      estimatedMinutes: Number(item?.estimatedMinutes) || 0,
+      url: safeUrl(item?.url),
+      description: safeText(item?.description, 5_000),
+      teacherInstructions: safeText(item?.teacherInstructions, 10_000),
+      notes: safeText(item?.notes, 5_000),
+      resources: normalizeResources(item?.resources)
+    };
+    if (assignment.estimatedMinutes < 0 || assignment.estimatedMinutes > 1_440) throw Object.assign(new Error("Invalid assignment"), { status: 400 });
+    return assignment;
+  });
+}
+
+function safeText(value, limit) {
+  const text = String(value || "").trim();
+  if (text.length > limit) throw Object.assign(new Error("Invalid text"), { status: 400 });
+  return text;
+}
+
+function safeUrl(value) {
+  const url = String(value || "").trim();
+  if (url && (url.length > 2_000 || !url.startsWith("https://"))) throw Object.assign(new Error("Invalid URL"), { status: 400 });
+  return url;
+}
+
+function normalizeResources(input = []) {
+  if (!Array.isArray(input) || input.length > 20) throw Object.assign(new Error("Invalid resources"), { status: 400 });
+  return input.map(item => {
+    const name = safeText(item?.name, 120);
+    const kind = String(item?.kind || "link");
+    const url = safeUrl(item?.url);
+    if (!name || !url || !["file", "link"].includes(kind)) throw Object.assign(new Error("Invalid resource"), { status: 400 });
+    return { name, url, kind };
+  });
+}
+
+export function normalizeMaterials(input = []) {
+  if (!Array.isArray(input) || input.length > MAX_MATERIALS) throw Object.assign(new Error("Invalid materials"), { status: 400 });
+  return input.map(item => {
+    const title = safeText(item?.title, 200);
+    const className = safeText(item?.class, 100);
+    if (!title || !className) throw Object.assign(new Error("Invalid material"), { status: 400 });
+    return { title, class: className, description: safeText(item?.description, 10_000), url: safeUrl(item?.url), resources: normalizeResources(item?.resources) };
   });
 }
 
 async function readCache() {
   // A fixed private Blob path gives this single-user cache durable overwrite semantics.
   const result = await get(CACHE_PATH, { access: "private", useCache: false });
-  if (!result) return { lastSynced: null, assignments: [] };
+  if (!result) return { lastSynced: null, assignments: [], materials: [] };
   if (result.statusCode !== 200 || !result.stream) throw new Error("Could not read assignment cache");
-  return JSON.parse(await new Response(result.stream).text());
+  const stored = JSON.parse(await new Response(result.stream).text());
+  return { lastSynced: stored.lastSynced || null, assignments: normalizeAssignments(stored.assignments || []), materials: normalizeMaterials(stored.materials || []) };
 }
 
 export default async function handler(req, res) {
@@ -71,7 +124,12 @@ export default async function handler(req, res) {
     if (req.method === "GET") return send(res, 200, await readCache());
     if (req.method === "POST") {
       const body = await readBody(req);
-      const cache = { lastSynced: new Date().toISOString(), assignments: normalizeAssignments(body?.assignments ?? body) };
+      const previous = body?.materials === undefined ? await readCache() : null;
+      const cache = {
+        lastSynced: new Date().toISOString(),
+        assignments: normalizeAssignments(body?.assignments ?? body),
+        materials: body?.materials === undefined ? previous.materials || [] : normalizeMaterials(body.materials)
+      };
       await put(CACHE_PATH, JSON.stringify(cache), { access: "private", addRandomSuffix: false, allowOverwrite: true, contentType: "application/json", cacheControlMaxAge: 60 });
       return send(res, 200, cache);
     }

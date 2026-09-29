@@ -193,7 +193,7 @@ export async function visibleAssignments(page, provider, completed = false) {
         if (!course) continue;
         const details = lines.slice(3).join(" ");
         const due = /\bposted\b/i.test(details) ? "" : dueFrom(`Due ${details}`);
-        output.push({ sourceId: `${match[1]}:${match[2]}`, course, title, due, time: timeFrom(details), type: typeFrom(title), completed, url });
+        output.push({ sourceId: `${match[1]}:${match[2]}`, courseSourceId: match[1], course, title, due, time: timeFrom(details), type: typeFrom(title), completed, url });
       }
     } else {
       for (const anchor of document.querySelectorAll('a[href*="/lms-assignment/assignment/"]')) {
@@ -256,6 +256,30 @@ export async function googleAssignmentDetails(page, item) {
   return details;
 }
 
+export async function visibleGoogleMaterials(page, course) {
+  return page.evaluate(course => {
+    const clean = value => String(value || "").replace(/\s+/g, " ").trim();
+    const output = [];
+    for (const anchor of document.querySelectorAll('a[href*="/m/"]')) {
+      const match = anchor.href.match(/\/c\/([^/]+)\/m\/([^/?#]+)/);
+      if (!match || match[1] !== course.sourceId) continue;
+      const lines = String(anchor.innerText || "").split("\n").map(clean).filter(Boolean);
+      const title = lines.find(line => !/^material$/i.test(line)) || clean(anchor.getAttribute("aria-label")).replace(/^view material:?\s*/i, "");
+      if (!title || title.length > 200) continue;
+      const root = anchor.closest('[role="listitem"], article, li') || anchor.parentElement;
+      const resources = [];
+      for (const link of root?.querySelectorAll('a[href]') || []) {
+        const name = clean(link.innerText || link.getAttribute("aria-label") || link.title);
+        if (link.href === anchor.href || !name || !/^https:\/\//.test(link.href)) continue;
+        resources.push({ name: name.slice(0, 120), url: link.href, kind: "link" });
+        if (resources.length === 20) break;
+      }
+      output.push({ sourceId: `${match[1]}:${match[2]}`, class: course.name, title, description: "", url: anchor.href, resources });
+    }
+    return [...new Map(output.map(item => [item.sourceId, item])).values()];
+  }, course);
+}
+
 function blackbaudCourseName(name) {
   return [
     ["Algebra 2", /\balgebra\s*(?:2|ii)\b/i], ["English 10", /\benglish\s*10\b/i],
@@ -275,6 +299,37 @@ function blackbaudDateAndTime(value) {
     time = `${String(hour).padStart(2, "0")}:${match[5]}`;
   }
   return { due: `${match[3]}-${match[1].padStart(2, "0")}-${match[2].padStart(2, "0")}`, time };
+}
+
+function blackbaudText(value) {
+  return String(value || "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function blackbaudAttachments(item) {
+  const candidates = [item?.Attachments, item?.AttachmentList, item?.Resources, item?.Links, item?.Files].flatMap(value => Array.isArray(value) ? value : []);
+  const seen = new Set();
+  const output = [];
+  for (const attachment of candidates) {
+    const rawUrl = attachment?.Url || attachment?.URL || attachment?.DownloadUrl || attachment?.FileUrl || attachment?.Link;
+    let url;
+    try { url = new URL(rawUrl, "https://oakgrovelutheran.myschoolapp.com").href; } catch { continue; }
+    if (!url.startsWith("https://") || seen.has(url)) continue;
+    const name = blackbaudText(attachment?.FileName || attachment?.DisplayName || attachment?.Name || attachment?.Title || "Resource").slice(0, 120);
+    seen.add(url);
+    output.push({ id: `blackbaud-${createHash("sha256").update(url).digest("hex").slice(0, 20)}`, name, url });
+    if (output.length === 20) break;
+  }
+  return output;
 }
 
 function payload(provider, items, extra = {}) {
@@ -300,6 +355,9 @@ export function blackbaudAssignments(data) {
       const title = String(item?.ShortDescription || "").trim();
       const course = blackbaudCourseName(item?.GroupName);
       if (!sourceId || !title || !course) continue;
+      const description = blackbaudText(item.LongDescription || item.Description || item.AssignmentDescription);
+      const teacherInstructions = blackbaudText(item.Directions || item.Instructions || item.TeacherNotes || item.Notes || description);
+      const attachments = blackbaudAttachments(item);
       output.push({
         sourceId,
         courseSourceId: String(item.SectionId || item.GroupName),
@@ -308,7 +366,10 @@ export function blackbaudAssignments(data) {
         ...blackbaudDateAndTime(item.DateDue),
         type: String(item.AssignmentType || "Assignment"),
         completed: false,
-        url: `https://oakgrovelutheran.myschoolapp.com/lms-assignment/assignment/assignment-student-view/${sourceId}`
+        url: `https://oakgrovelutheran.myschoolapp.com/lms-assignment/assignment/assignment-student-view/${sourceId}`,
+        ...(description ? { description } : {}),
+        ...(teacherInstructions ? { teacherInstructions } : {}),
+        ...(attachments.length ? { attachments } : {})
       });
     }
   }
@@ -367,14 +428,25 @@ async function scrapeGoogle(page) {
     await autoScroll(page);
     items.push(...await visibleAssignments(page, "google", completed));
   }
-  for (const item of new Map(items.filter(item => !item.completed).map(item => [item.sourceId, item])).values()) {
+  const assignments = [...new Map(items.filter(item => !item.completed).map(item => [item.sourceId, item])).values()];
+  for (const item of assignments) {
     try {
       await page.goto(item.url, { waitUntil: "domcontentloaded", timeout: 30_000 });
       await page.waitForTimeout(600);
       Object.assign(item, await googleAssignmentDetails(page, item));
     } catch {}
   }
-  return payload("google", items);
+  const materials = [];
+  const courses = [...new Map(assignments.map(item => [item.courseSourceId, { sourceId: item.courseSourceId, name: item.course }])).values()];
+  for (const course of courses) {
+    try {
+      await page.goto(`https://classroom.google.com/w/${encodeURIComponent(course.sourceId)}/t/all`, { waitUntil: "domcontentloaded", timeout: 30_000 });
+      await page.waitForTimeout(600);
+      await autoScroll(page);
+      materials.push(...await visibleGoogleMaterials(page, course));
+    } catch {}
+  }
+  return payload("google", assignments, { materials });
 }
 
 async function scrapeBlackbaud(page) {

@@ -82,7 +82,8 @@
   function cleanAssignment(remote, course, provider, syncedAt) {
     const due = /^\d{4}-\d{2}-\d{2}$/.test(remote.due || "") ? remote.due : "";
     const time = /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(remote.time || "") ? remote.time : "23:59";
-    const teacherInstructions = String(remote.description || "").slice(0, 10000);
+    const description = String(remote.description || "").slice(0, 5000);
+    const teacherInstructions = String(remote.teacherInstructions || remote.description || "").slice(0, 10000);
     const attachments = Array.isArray(remote.attachments) ? remote.attachments.slice(0, 20).filter(item => item && /^[\w-]{1,64}$/.test(item.id || "") && String(item.name || "").length <= 120 && /^https:\/\//.test(item.url || "")).map(item => ({ id: item.id, name: String(item.name), url: item.url })) : [];
     return {
       title: decodeEntities(remote.title || "Untitled assignment").trim().slice(0, 100),
@@ -94,6 +95,7 @@
       priority: /test|exam|project/i.test(remote.type || "") ? "high" : "normal",
       completed: false,
       url: /^https:\/\//.test(remote.url || "") ? remote.url : "",
+      ...(description ? { description } : {}),
       ...(teacherInstructions ? { teacherInstructions } : {}),
       ...(attachments.length ? { attachments } : {}),
       syncedAt
