@@ -257,9 +257,28 @@ export async function googleAssignmentDetails(page, item) {
 }
 
 export async function visibleGoogleMaterials(page, course) {
+  await page.evaluate(() => {
+    for (const button of document.querySelectorAll('[data-stream-item-type="5"] [role="button"][aria-expanded="false"]')) button.click();
+  });
+  await page.waitForTimeout(300);
   return page.evaluate(course => {
     const clean = value => String(value || "").replace(/\s+/g, " ").trim();
     const output = [];
+    for (const root of document.querySelectorAll('[data-stream-item-type="5"][data-stream-item-id]')) {
+      const materialId = root.getAttribute("data-stream-item-id");
+      const title = clean(root.querySelector('[role="button"][aria-label]')?.getAttribute("aria-label") || root.querySelector(".Cx437e, .Vu2fZd")?.innerText);
+      if (!materialId || !title || title.length > 200) continue;
+      const resources = [];
+      for (const link of root.querySelectorAll('a[href]')) {
+        const name = clean(link.innerText || link.getAttribute("aria-label") || link.title);
+        if (!name || !/^https:\/\//.test(link.href)) continue;
+        resources.push({ name: name.slice(0, 120), url: link.href, kind: "link" });
+        if (resources.length === 20) break;
+      }
+      const ignored = new Set([title, ...resources.map(item => item.name)]);
+      const description = String(root.innerText || "").split("\n").map(clean).filter(line => line && !ignored.has(line) && !/^(?:material|posted\b|more options|copy link)$/i.test(line)).join("\n").slice(0, 10_000);
+      output.push({ sourceId: `${course.sourceId}:${materialId}`, class: course.name, title, description, url: `${location.origin}/c/${course.sourceId}/m/${materialId}/details`, resources });
+    }
     for (const anchor of document.querySelectorAll('a[href*="/m/"]')) {
       const match = anchor.href.match(/\/c\/([^/]+)\/m\/([^/?#]+)/);
       if (!match || match[1] !== course.sourceId) continue;
@@ -274,7 +293,7 @@ export async function visibleGoogleMaterials(page, course) {
         resources.push({ name: name.slice(0, 120), url: link.href, kind: "link" });
         if (resources.length === 20) break;
       }
-      output.push({ sourceId: `${match[1]}:${match[2]}`, class: course.name, title, description: "", url: anchor.href, resources });
+      if (!output.some(item => item.sourceId === `${match[1]}:${match[2]}`)) output.push({ sourceId: `${match[1]}:${match[2]}`, class: course.name, title, description: "", url: anchor.href, resources });
     }
     return [...new Map(output.map(item => [item.sourceId, item])).values()];
   }, course);

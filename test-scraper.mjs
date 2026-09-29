@@ -115,9 +115,17 @@ test("Google classwork parsing collects material links and resources", async () 
     await page.setContent(`<base href="https://classroom.google.com"><main><article>
       <a href="/c/course-1/m/material-1/details">Study resources</a>
       <a href="https://docs.google.com/document/d/review/edit">Review sheet</a>
-    </article></main>`);
+    </article><li data-stream-item-type="5" data-stream-item-id="material-2">
+      <div role="button" aria-label="Lab references" aria-expanded="true"></div>
+      <div>Material</div><div>Lab references</div><div>Use these during the lab.</div>
+      <a href="https://example.com/reference.pdf">Reference PDF</a>
+    </li></main>`);
     const materials = await visibleGoogleMaterials(page, { sourceId: "course-1", name: "Chemistry" });
-    assert.deepEqual(materials.map(({ sourceId, class: className, title }) => ({ sourceId, class: className, title })), [{ sourceId: "course-1:material-1", class: "Chemistry", title: "Study resources" }]);
-    assert.equal(materials[0].resources[0].url, "https://docs.google.com/document/d/review/edit");
+    assert.deepEqual(materials.map(({ sourceId, class: className, title }) => ({ sourceId, class: className, title })), [
+      { sourceId: "course-1:material-2", class: "Chemistry", title: "Lab references" },
+      { sourceId: "course-1:material-1", class: "Chemistry", title: "Study resources" }
+    ]);
+    assert.equal(materials[0].description, "Use these during the lab.");
+    assert.equal(materials[0].resources[0].url, "https://example.com/reference.pdf");
   } finally { await browser.close(); }
 });
