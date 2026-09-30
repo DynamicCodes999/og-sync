@@ -11,6 +11,8 @@ const PROVIDERS = {
 
 let context;
 const pages = new Map();
+const blackbaudDetailCache = new Map();
+const BLACKBAUD_DETAIL_TTL = 30 * 60 * 1_000;
 
 function validProvider(provider) {
   if (!PROVIDERS[provider]) throw new Error("Unknown scraper provider");
@@ -230,8 +232,8 @@ export async function googleAssignmentDetails(page, item) {
         const text = clean(element.innerText);
         const label = clean(element.getAttribute("aria-label"));
         const whiteSpace = getComputedStyle(element).whiteSpace;
-        const score = (/instruction|description/i.test(label) ? 100 : 0) + (/pre-wrap|pre-line/.test(whiteSpace) ? 20 : 0) + (element.tagName === "P" ? 10 : 0);
-        return { text, score };
+        const score = (/^instructions?:/i.test(text) ? 200 : 0) + (/instruction|description/i.test(label) ? 100 : 0) + (/pre-wrap|pre-line/.test(whiteSpace) ? 20 : 0) + (element.tagName === "P" ? 10 : 0);
+        return { element, text, score };
       })
       .filter(candidate => candidate.score >= 10 && candidate.text.length >= 2 && candidate.text.length <= 10_000 && candidate.text !== title && !/^(?:due|points?|class comments?|private comments?|your work|turn in|mark as done)\b/i.test(candidate.text))
       .sort((a, b) => b.score - a.score || b.text.length - a.text.length);
@@ -240,14 +242,16 @@ export async function googleAssignmentDetails(page, item) {
     for (const anchor of root.querySelectorAll('a[href]')) {
       let url;
       try { url = new URL(anchor.href); } catch { continue; }
-      const name = clean(anchor.innerText || anchor.getAttribute("aria-label") || anchor.title);
+      const label = clean(anchor.getAttribute("aria-label"));
+      if (!/^Attachment:/i.test(label) && !candidates[0]?.element.contains(anchor)) continue;
+      const name = clean(anchor.title || label.replace(/^Attachment:\s*(?:[^:]+:\s*)?/i, "") || anchor.innerText);
       if (url.protocol !== "https:" || url.href === assignmentUrl || !name || name.length > 120 || seen.has(url.href)) continue;
       if (/^(?:home|calendar|settings|google apps|open in new window)$/i.test(name) || /(?:accounts\.google\.com|google\.com\/intl\/)/i.test(url.href)) continue;
       seen.add(url.href);
       attachments.push({ name, url: url.href });
       if (attachments.length === 20) break;
     }
-    return { description: candidates[0]?.text || "", attachments };
+    return { description: (candidates[0]?.text || "").replace(/^Instructions?:\s*/i, ""), attachments };
   }, { title: item.title, assignmentUrl: item.url });
   details.attachments = details.attachments.map(attachment => ({
     id: `google-${createHash("sha256").update(attachment.url).digest("hex").slice(0, 20)}`,
@@ -335,15 +339,15 @@ function blackbaudText(value) {
 }
 
 function blackbaudAttachments(item) {
-  const candidates = [item?.Attachments, item?.AttachmentList, item?.Resources, item?.Links, item?.Files].flatMap(value => Array.isArray(value) ? value : []);
+  const candidates = [item?.Attachments, item?.AttachmentList, item?.Resources, item?.Links, item?.Files, item?.DownloadItems, item?.LinkItems, item?.LtiResourceLinkItems].flatMap(value => Array.isArray(value) ? value : []);
   const seen = new Set();
   const output = [];
   for (const attachment of candidates) {
-    const rawUrl = attachment?.Url || attachment?.URL || attachment?.DownloadUrl || attachment?.FileUrl || attachment?.Link;
+    const rawUrl = attachment?.Url || attachment?.URL || attachment?.DownloadUrl || attachment?.FileUrl || attachment?.Link || attachment?.UrlDisplay;
     let url;
     try { url = new URL(rawUrl, "https://oakgrovelutheran.myschoolapp.com").href; } catch { continue; }
     if (!url.startsWith("https://") || seen.has(url)) continue;
-    const name = blackbaudText(attachment?.FileName || attachment?.DisplayName || attachment?.Name || attachment?.Title || "Resource").slice(0, 120);
+    const name = blackbaudText(attachment?.FriendlyFileName || attachment?.FileName || attachment?.ShortDescription || attachment?.DisplayName || attachment?.Name || attachment?.Title || "Resource").slice(0, 120);
     seen.add(url);
     output.push({ id: `blackbaud-${createHash("sha256").update(url).digest("hex").slice(0, 20)}`, name, url });
     if (output.length === 20) break;
@@ -365,7 +369,7 @@ function payload(provider, items, extra = {}) {
   return { provider: canonical, syncedAt: new Date().toISOString(), courses, assignments: [...unique.values()], ...extra };
 }
 
-export function blackbaudAssignments(data) {
+export function blackbaudAssignments(data, details = {}) {
   const output = [];
   for (const group of Object.values(data || {})) {
     if (!Array.isArray(group)) continue;
@@ -374,9 +378,10 @@ export function blackbaudAssignments(data) {
       const title = String(item?.ShortDescription || "").trim();
       const course = blackbaudCourseName(item?.GroupName);
       if (!sourceId || !title || !course) continue;
-      const description = blackbaudText(item.LongDescription || item.Description || item.AssignmentDescription);
-      const teacherInstructions = blackbaudText(item.Directions || item.Instructions || item.TeacherNotes || item.Notes || description);
-      const attachments = blackbaudAttachments(item);
+      const detail = details[sourceId] || {};
+      const description = blackbaudText(detail.LongDescription || item.LongDescription || item.Description || item.AssignmentDescription);
+      const teacherInstructions = blackbaudText(detail.Directions || detail.Instructions || detail.TeacherNotes || detail.Notes || item.Directions || item.Instructions || item.TeacherNotes || item.Notes || description);
+      const attachments = blackbaudAttachments({ ...item, ...detail });
       output.push({
         sourceId,
         courseSourceId: String(item.SectionId || item.GroupName),
@@ -388,7 +393,7 @@ export function blackbaudAssignments(data) {
         url: `https://oakgrovelutheran.myschoolapp.com/lms-assignment/assignment/assignment-student-view/${sourceId}`,
         ...(description ? { description } : {}),
         ...(teacherInstructions ? { teacherInstructions } : {}),
-        ...(attachments.length ? { attachments } : {})
+        attachments
       });
     }
   }
@@ -451,7 +456,8 @@ async function scrapeGoogle(page) {
   for (const item of assignments) {
     try {
       await page.goto(item.url, { waitUntil: "domcontentloaded", timeout: 30_000 });
-      await page.waitForTimeout(600);
+      await page.waitForSelector('main, [role="main"]', { timeout: 3_000 }).catch(() => {});
+      await page.waitForTimeout(1_000);
       Object.assign(item, await googleAssignmentDetails(page, item));
     } catch {}
   }
@@ -470,7 +476,9 @@ async function scrapeGoogle(page) {
 
 async function scrapeBlackbaud(page) {
   if (!/oakgrovelutheran\.myschoolapp\.com/i.test(page.url())) throw new Error("Finish signing into My Oak Grove, then try again.");
-  const data = await page.evaluate(async () => {
+  const now = Date.now();
+  const freshDetailIds = [...blackbaudDetailCache].filter(([, entry]) => now - entry.cachedAt < BLACKBAUD_DETAIL_TTL).map(([id]) => id);
+  const data = await page.evaluate(async freshDetailIds => {
     const get = async path => {
       const response = await fetch(path);
       if (!response.ok) throw new Error(`Blackbaud returned HTTP ${response.status}`);
@@ -479,14 +487,27 @@ async function scrapeBlackbaud(page) {
     const assignments = await get("/api/assignment2/StudentAssignmentCenterGet?displayByDueDate=true");
     const status = await get("/api/webapp/userstatus");
     const userId = status.UserId || status.userId;
+    const assignmentDetails = {};
+    const cached = new Set(freshDetailIds);
+    const detailItems = Object.values(assignments).flat().filter(item => item?.AssignmentIndexId && !cached.has(String(item.AssignmentIndexId)));
+    let detailIndex = 0;
+    const detailWorker = async () => {
+      while (detailIndex < detailItems.length) {
+        const item = detailItems[detailIndex++];
+        try {
+          assignmentDetails[item.AssignmentIndexId] = await get(`/api/assignment2/UserAssignmentDetailsGetAllStudentData?assignmentIndexId=${encodeURIComponent(item.AssignmentIndexId)}&studentUserId=${encodeURIComponent(userId)}&personaId=2`);
+        } catch {}
+      }
+    };
+    if (userId) await Promise.all(Array.from({ length: 6 }, detailWorker));
     const years = await get("/api/datadirect/StudentGradeLevelList/");
     const currentYear = years.find(item => item.CurrentInd || item.currentInd) || years[0];
     const schoolYear = currentYear?.SchoolYearLabel || currentYear?.schoolYearLabel;
-    if (!userId || !schoolYear) return { assignments, grades: { classes: [], gradebooks: [] } };
+    if (!userId || !schoolYear) return { assignments, assignmentDetails, grades: { classes: [], gradebooks: [] } };
     const terms = await get(`/api/DataDirect/StudentGroupTermList/?studentUserId=${encodeURIComponent(userId)}&schoolYearLabel=${encodeURIComponent(schoolYear)}&personaId=2`);
     const currentTerm = terms.find(item => item.CurrentInd || item.currentInd) || terms[0];
     const durationId = currentTerm?.DurationId || currentTerm?.durationId;
-    if (!durationId) return { assignments, grades: { classes: [], gradebooks: [] } };
+    if (!durationId) return { assignments, assignmentDetails, grades: { classes: [], gradebooks: [] } };
     const classes = await get(`/api/datadirect/ParentStudentUserClassesGet?userId=${encodeURIComponent(userId)}&schoolYearLabel=${encodeURIComponent(schoolYear)}&memberLevel=3&persona=2&durationList=${encodeURIComponent(durationId)}&markingPeriodId=`);
     const gradebooks = await Promise.all(classes.map(async section => {
       const sectionId = section.sectionid || section.SectionId || section.leadsectionid || section.LeadSectionId;
@@ -497,9 +518,11 @@ async function scrapeBlackbaud(page) {
         return { sectionId, data: book };
       } catch { return { sectionId, data: null }; }
     }));
-    return { assignments, grades: { classes, gradebooks } };
-  });
-  const items = blackbaudAssignments(data.assignments);
+    return { assignments, assignmentDetails, grades: { classes, gradebooks } };
+  }, freshDetailIds);
+  for (const [id, detail] of Object.entries(data.assignmentDetails || {})) blackbaudDetailCache.set(id, { detail, cachedAt: now });
+  const assignmentDetails = Object.fromEntries([...blackbaudDetailCache].map(([id, entry]) => [id, entry.detail]));
+  const items = blackbaudAssignments(data.assignments, assignmentDetails);
   return payload("blackbaud", items, blackbaudGrades(data.grades));
 }
 

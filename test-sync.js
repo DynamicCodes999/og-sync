@@ -38,12 +38,14 @@ test("sync is idempotent and merges the same assignment across providers", () =>
   assert.equal(state.tasks[0].teacherInstructions, "Show every step.");
   assert.deepEqual(state.tasks[0].attachments, [{ id: "google-guide", name: "Review guide", url: "https://docs.google.com/document/d/guide/edit" }]);
   state.tasks[0].attachments.push({ id: "manual-notes", name: "My notes", url: "https://example.com/notes" });
+  state.tasks[0].attachments.push({ id: "google-stale", name: "Old scraped link", url: "https://classroom.google.com/old" });
   state.tasks[0].completed = true;
 
   mergeImported(state, google, ids);
   assert.equal(state.tasks.length, 1);
   assert.equal(state.tasks[0].completed, true);
   assert.equal(state.tasks[0].attachments.length, 2);
+  assert.equal(state.tasks[0].attachments.some(item => item.id === "google-stale"), false);
 
   mergeImported(state, {
     provider: "blackbaud",

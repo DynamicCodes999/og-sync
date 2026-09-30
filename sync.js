@@ -97,7 +97,7 @@
       url: /^https:\/\//.test(remote.url || "") ? remote.url : "",
       ...(description ? { description } : {}),
       ...(teacherInstructions ? { teacherInstructions } : {}),
-      ...(attachments.length ? { attachments } : {}),
+      ...(Array.isArray(remote.attachments) ? { attachments } : {}),
       syncedAt
     };
   }
@@ -149,11 +149,13 @@
         matchedByContent = Boolean(task);
       }
       if (task) {
+        const refreshAttachments = Object.hasOwn(next, "attachments");
         const attachments = next.attachments || [];
         delete next.attachments;
         const wasCompleted = task.completed;
         Object.assign(task, next, { completed: wasCompleted });
-        task.attachments ||= [];
+        const attachmentPrefix = provider === "google-classroom" ? "google-" : `${provider}-`;
+        task.attachments = refreshAttachments ? (task.attachments || []).filter(item => !String(item.id || "").startsWith(attachmentPrefix)) : task.attachments || [];
         for (const attachment of attachments) {
           const existing = task.attachments.find(item => item.url === attachment.url);
           if (existing) Object.assign(existing, attachment);

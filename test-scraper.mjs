@@ -58,10 +58,11 @@ test("Blackbaud API parsing includes future Band work", () => {
   const items = blackbaudAssignments({ DueAfterNextWeek: [{
     GroupName: "Concert Band - 2", SectionId: 90275949, AssignmentIndexId: 17070595,
     ShortDescription: "Syllabus", DateDue: "9/14/2026 11:20 AM", AssignmentType: "Participation",
-    LongDescription: "<p>Read every section.</p>", Instructions: "Bring the signed page.",
-    Attachments: [{ FileName: "Band handbook", DownloadUrl: "/files/band-handbook.pdf" }],
     AssignmentStatusType: 1, StudentStatus: 1, CollectedInd: true, HasGrade: true
-  }] });
+  }] }, { 17070595: {
+    LongDescription: "<p>Read every section.</p>", Instructions: "Bring the signed page.",
+    DownloadItems: [{ FriendlyFileName: "Band handbook", DownloadUrl: "/files/band-handbook.pdf" }]
+  } });
   assert.deepEqual(items.map(({ sourceId, courseSourceId, course, title, due, time, completed }) => ({ sourceId, courseSourceId, course, title, due, time, completed })), [{
     sourceId: "17070595", courseSourceId: "90275949", course: "Band", title: "Syllabus", due: "2026-09-14", time: "11:20", completed: false
   }]);
@@ -96,8 +97,9 @@ test("Google detail parsing extracts teacher instructions and useful attachments
   try {
     await page.setContent(`<base href="https://classroom.google.com"><main>
       <h1>Cell Model</h1>
-      <div aria-label="Assignment instructions">Build a labeled model. Explain how each organelle helps the cell.</div>
-      <a href="https://docs.google.com/document/d/model-guide/edit">Cell model guide</a>
+      <div><span><b>Instructions:</b><br>Build a labeled model. Explain how each organelle helps the cell.</span></div>
+      <a href="https://docs.google.com/document/d/model-guide/edit" aria-label="Attachment: Google Docs: Cell model guide" title="Cell model guide">Cell model guide Google Docs</a>
+      <a href="https://classroom.google.com/a/turned-in/all">Archived classes</a>
       <a href="https://classroom.google.com/c/course/a/work/details">Cell Model</a>
       <a href="https://accounts.google.com/SignOutOptions">Google Account</a>
     </main>`);
