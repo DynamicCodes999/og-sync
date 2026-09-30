@@ -154,3 +154,19 @@ test("removes the one corrupt Blackbaud import without touching real work", () =
   assert.equal(migrateState(state), 1);
   assert.deepEqual(state.tasks.map(task => task.id), ["good"]);
 });
+
+test("removes stale Classroom navigation links but keeps real and manual resources", () => {
+  const state = workspace();
+  state.tasks = [{
+    id: "task",
+    title: "Research project",
+    attachments: [
+      { id: "google-nav", name: "Course", url: "https://classroom.google.com/c/course-id" },
+      { id: "google-material", name: "Project guide", url: "https://classroom.google.com/c/course-id/m/material-id/details" },
+      { id: "manual-link", name: "My notes", url: "https://example.com/notes" }
+    ]
+  }];
+
+  assert.equal(migrateState(state), 1);
+  assert.deepEqual(state.tasks[0].attachments.map(item => item.id), ["google-material", "manual-link"]);
+});

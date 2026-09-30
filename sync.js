@@ -51,6 +51,16 @@
     return Boolean(state.tombstones?.sources?.[sourceKey(provider, id)]);
   }
 
+  function isGoogleNavigationAttachment(item) {
+    if (!String(item?.id || "").startsWith("google-")) return false;
+    try {
+      const url = new URL(item.url);
+      return url.hostname === "classroom.google.com" && /^\/(?:h(?:\/[^/]+)?|ai|a\/[^/]+\/all|c\/[^/]+)\/?$/.test(url.pathname);
+    } catch {
+      return false;
+    }
+  }
+
   function addSource(item, source) {
     item.sources ||= [];
     if (!sourceMatch(item, source.provider, source.id)) item.sources.push(source);
@@ -227,9 +237,15 @@
     }
     let changed = before - state.tasks.length;
     for (const task of state.tasks) {
-      if (typeof task.title !== "string") continue;
-      const title = decodeEntities(task.title);
-      if (title !== task.title) { task.title = title; changed++; }
+      if (Array.isArray(task.attachments)) {
+        const attachments = task.attachments.filter(item => !isGoogleNavigationAttachment(item));
+        changed += task.attachments.length - attachments.length;
+        task.attachments = attachments;
+      }
+      if (typeof task.title === "string") {
+        const title = decodeEntities(task.title);
+        if (title !== task.title) { task.title = title; changed++; }
+      }
     }
     return changed;
   }
